@@ -1,0 +1,4 @@
+nome;organizacao;email;telefone;listas;interno;ativo
+Centro de Operações (teste);IPMA;teste.migracao@ipma.pt;+351 910 000 001;LIC|LGC;sim;sim
+Proteção Civil Açores (exemplo);SRPCBA;exemplo.migracao@prociv.example;;LIA;nao;sim
+Sem contacto;;;;LIC;;

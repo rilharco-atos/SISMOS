@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sismos
+      POSTGRES_USER: sismos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismos_dev_pwd}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Apenas acessível a partir do próprio servidor (desenvolvimento e manutenção).
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U sismos -d sismos -c 'SELECT 1' -q 2>/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      DATABASE_URL: postgresql://sismos:${POSTGRES_PASSWORD:-sismos_dev_pwd}@postgres:5432/sismos
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_EXPIRES_IN: 8h
+      FTP_HOST: ${FTP_HOST:-ftp.ipma.pt}
+      FTP_USER: ${FTP_USER:-sismos}
+      FTP_PASSWORD: ${FTP_PASSWORD:-}
+      FTP_INCOMING_DIR: ${FTP_INCOMING_DIR:-/sismos/incoming}
+      FTP_PROCESSED_DIR: ${FTP_PROCESSED_DIR:-/sismos/processed}
+      FTP_POLL_INTERVAL_MS: ${FTP_POLL_INTERVAL_MS:-30000}
+      SMTP_HOST: ${SMTP_HOST:-smtp.ipma.pt}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-sismos@ipma.pt}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-"IPMA Sismologia <sismos@ipma.pt>"}
+      SMS_PROVIDER_URL: ${SMS_PROVIDER_URL:-https://smsexpress.meo.pt/api/v2/send}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_SENDER: ${SMS_SENDER:-IPMA-SISMOS}
+      WEBSITE_PUBLISHER: ${WEBSITE_PUBLISHER:-none}
+      IPMA_WEBSITE_API_URL: ${IPMA_WEBSITE_API_URL:-}
+      IPMA_WEBSITE_API_TOKEN: ${IPMA_WEBSITE_API_TOKEN:-}
+      WEBSITE_PUBLICACAO_DIR: /app/website
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      BACKUP_DIR: /app/backups
+      BACKUP_MAX_IDADE_HORAS: ${BACKUP_MAX_IDADE_HORAS:-26}
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "3001:3001"
+    volumes:
+      - uploads:/app/uploads
+      - ftp_incoming:/app/ftp/incoming
+      - ftp_processed:/app/ftp/processed
+      - website:/app/website
+      - backups:/app/backups:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/system/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  ui:
+    build:
+      context: ./apps/ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: sismos
+      PGDATABASE: sismos
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sismos_dev_pwd}
+      BACKUP_INTERVALO_HORAS: ${BACKUP_INTERVALO_HORAS:-6}
+      BACKUP_RETENCAO_DIAS: ${BACKUP_RETENCAO_DIAS:-30}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - backups:/backups
+      - uploads:/uploads
+
+volumes:
+  postgres_data:
+  uploads:
+  ftp_incoming:
+  ftp_processed:
+  website:
+  backups:

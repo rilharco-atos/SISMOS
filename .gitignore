@@ -1,0 +1,28 @@
+# Dependências e builds
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Dados de runtime (PDFs, imagens, FTP local, publicação website, backups)
+apps/api/uploads/
+apps/api/ftp/
+apps/api/website/
+apps/api/backups/
+backups/
+relatorio-migracao-*.json
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+.vercel

@@ -1,0 +1,238 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ANALISTA
+  ADMIN
+}
+
+enum ComunicadoEstado {
+  RASCUNHO
+  PENDENTE
+  APROVADO
+  ENVIADO
+  CANCELADO
+  ARQUIVADO
+}
+
+enum ComunicadoOrigem {
+  AUTOMATICO
+  MANUAL
+  MIGRADO
+}
+
+enum WebsiteEstado {
+  NAO_PUBLICADO
+  PUBLICADO
+  REMOVIDO
+  ERRO
+}
+
+enum ListaKey {
+  LGA
+  LIA
+  LGM
+  LIM
+  LGC
+  LIC
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(ANALISTA)
+  active       Boolean    @default(true)
+  criadoEm    DateTime   @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  comunicados  Comunicado[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Comunicado {
+  id                  String           @id @default(uuid())
+  referencia          String           @unique
+  ano                 Int
+  numeroAno           Int
+  origem              ComunicadoOrigem @default(MANUAL)
+  templateId          String           @default("0000")
+  estado              ComunicadoEstado @default(RASCUNHO)
+  primeiraPagina      Boolean          @default(false)
+  ativo               Boolean          @default(true)
+  titulo              String
+  texto               String           @db.Text
+
+  local               String?
+  areaName            String           @default("Continente")
+  eventDateTime       DateTime?
+  lat                 Decimal?         @db.Decimal(9, 6)
+  lon                 Decimal?         @db.Decimal(9, 6)
+  depth               Decimal?         @db.Decimal(6, 2)
+  magnitude           Decimal?         @db.Decimal(4, 2)
+  intmax              String?
+  regiaoIntmax        String?
+  infoMacrossAdicional String?         @db.Text
+  klmLink             String?          @db.Text
+  smsListas           ListaKey[]
+  emailListas         ListaKey[]
+  xmlCriadoPor        String?
+
+  imagemUrl           String?
+  websiteInicio       DateTime?
+  websiteFim          DateTime?
+  websiteEstado       WebsiteEstado    @default(NAO_PUBLICADO)
+  websiteVersao       Int?
+  websitePublicadoEm  DateTime?
+  websiteErro         String?
+  pdfPath             String?
+  xmlFonte            String?          @db.Text
+
+  criadoPor           User             @relation(fields: [criadoPorId], references: [id])
+  criadoPorId         String
+  criadoEm            DateTime         @default(now())
+  atualizadoEm        DateTime         @updatedAt
+
+  versoes             Versao[]
+  auditLogs           AuditLog[]
+
+  @@unique([ano, numeroAno])
+  @@index([estado])
+  @@index([criadoEm])
+  @@index([areaName])
+  @@index([origem, criadoEm])
+  @@index([eventDateTime])
+}
+
+/// Último número de comunicado atribuído em cada ano (Ref. incrementada automaticamente).
+model ReferenciaSequencia {
+  ano    Int @id
+  ultimo Int
+}
+
+model Versao {
+  id           String     @id @default(uuid())
+  comunicado   Comunicado @relation(fields: [comunicadoId], references: [id], onDelete: Cascade)
+  comunicadoId String
+  numero       Int
+  titulo       String
+  texto        String     @db.Text
+  imagemUrl    String?
+  pdfPath      String?
+  xmlFonte     String?    @db.Text
+  criadoPorId  String?
+  criadoEm     DateTime   @default(now())
+
+  emailEnvios  EmailEnvio[]
+  smsEnvios    SmsEnvio[]
+
+  @@unique([comunicadoId, numero])
+  @@index([comunicadoId])
+}
+
+model Destinatario {
+  id          String              @id @default(uuid())
+  nome        String
+  organizacao String?
+  email       String?
+  telefone    String?
+  /// Contacto interno do IPMA: único destinatário que recebe envios em modo/ambiente de teste.
+  interno     Boolean             @default(false)
+  criadoEm    DateTime            @default(now())
+  atualizadoEm DateTime          @updatedAt
+
+  listas      DestinatarioLista[]
+
+  @@index([email])
+  @@index([telefone])
+}
+
+model DestinatarioLista {
+  destinatario   Destinatario @relation(fields: [destinatarioId], references: [id], onDelete: Cascade)
+  destinatarioId String
+  lista          ListaKey
+  ativo          Boolean      @default(true)
+
+  @@id([destinatarioId, lista])
+  @@index([lista])
+}
+
+model EmailEnvio {
+  id           String   @id @default(uuid())
+  versao       Versao   @relation(fields: [versaoId], references: [id], onDelete: Cascade)
+  versaoId     String
+  lista        ListaKey
+  totalEnviado Int      @default(0)
+  totalFalha   Int      @default(0)
+  sucesso      Boolean  @default(false)
+  erro         String?
+  enviadoEm    DateTime @default(now())
+
+  @@index([versaoId])
+}
+
+model SmsEnvio {
+  id           String   @id @default(uuid())
+  versao       Versao   @relation(fields: [versaoId], references: [id], onDelete: Cascade)
+  versaoId     String
+  lista        ListaKey
+  mensagem     String
+  totalEnviado Int      @default(0)
+  totalFalha   Int      @default(0)
+  sucesso      Boolean  @default(false)
+  erro         String?
+  enviadoEm    DateTime @default(now())
+
+  @@index([versaoId])
+}
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  user         User?       @relation(fields: [userId], references: [id])
+  userId       String?
+  acao         String
+  entidade     String
+  entidadeId   String?
+  comunicado   Comunicado? @relation(fields: [comunicadoId], references: [id])
+  comunicadoId String?
+  detalhes     Json?
+  ipAddress    String?
+  criadoEm     DateTime    @default(now())
+
+  @@index([userId])
+  @@index([comunicadoId])
+  @@index([criadoEm])
+}
+
+model SystemConfig {
+  id                String   @id @default("singleton")
+  ftpHost           String   @default("")
+  ftpUser           String   @default("")
+  ftpPassword       String   @default("")
+  ftpIncomingDir    String   @default("/incoming")
+  ftpProcessedDir   String   @default("/processed")
+  pollIntervalMs    Int      @default(30000)
+  smtpHost          String   @default("")
+  smtpPort          Int      @default(587)
+  smtpUser          String   @default("")
+  smtpPassword      String   @default("")
+  smtpFrom          String   @default("sismos@ipma.pt")
+  smsSender         String   @default("IPMA")
+  smsMode           String   @default("test")
+  /// Fluxo automático (FTP): aprova e envia sem intervenção do analista quando o texto está completo.
+  envioAutomatico   Boolean  @default(false)
+  emailRemetente    String   @default("IPMA — Serviço de Sismologia")
+  assinaturaTecnica String   @default("Instituto Português do Mar e da Atmosfera, I.P.")
+  fusoHorario       String   @default("UTC")
+  atualizadoEm      DateTime @updatedAt
+}

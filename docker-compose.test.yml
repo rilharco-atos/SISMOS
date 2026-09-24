@@ -1,0 +1,103 @@
+# Ambiente de testes (assessment, secção 13): os analistas simulam a emissão de comunicados
+# sem risco de envio para o exterior. Instalação independente da produção (projeto, volumes e portas próprios).
+#   docker compose -f docker-compose.test.yml --env-file .env.test up -d --build
+# Diferenças em relação à produção:
+#   - APP_ENV=test: modo de envio sempre "teste" (não pode ser mudado no backoffice); só recebem
+#     emails/SMS os destinatários marcados como "Contacto interno IPMA"; assunto com prefixo [TESTE]
+#   - sem publicação no website público
+#   - FTP de testes próprio (nunca a pasta de produção)
+name: sismos-teste
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sismos
+      POSTGRES_USER: sismos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sismos_test_pwd}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sismos -d sismos && psql -U sismos -d sismos -c 'SELECT 1' -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: test
+      LOG_FORMAT: json
+      DATABASE_URL: postgresql://sismos:${POSTGRES_PASSWORD:-sismos_test_pwd}@postgres:5432/sismos
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET em .env.test}
+      JWT_EXPIRES_IN: 8h
+      FTP_HOST: ${FTP_HOST:-}
+      FTP_USER: ${FTP_USER:-}
+      FTP_PASSWORD: ${FTP_PASSWORD:-}
+      FTP_INCOMING_DIR: ${FTP_INCOMING_DIR:-/sismos-teste/incoming}
+      FTP_PROCESSED_DIR: ${FTP_PROCESSED_DIR:-/sismos-teste/processed}
+      SMTP_HOST: ${SMTP_HOST:-smtp.ipma.pt}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-"IPMA Sismologia (TESTE) <sismos-teste@ipma.pt>"}
+      SMS_PROVIDER_URL: ${SMS_PROVIDER_URL:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_SENDER: ${SMS_SENDER:-IPMA-TESTE}
+      WEBSITE_PUBLISHER: none
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      BACKUP_DIR: /app/backups
+      NODE_ENV: production
+    ports:
+      - "3101:3001"
+    volumes:
+      - uploads:/app/uploads
+      - backups:/app/backups:ro
+
+  ui:
+    build:
+      context: ./apps/ui
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3101}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3101}
+    ports:
+      - "3100:3000"
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: sismos
+      PGDATABASE: sismos
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sismos_test_pwd}
+      BACKUP_INTERVALO_HORAS: 24
+      BACKUP_RETENCAO_DIAS: 7
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - backups:/backups
+      - uploads:/uploads
+
+volumes:
+  postgres_data:
+  uploads:
+  backups:

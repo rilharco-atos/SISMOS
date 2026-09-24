@@ -1,0 +1,6 @@
+referencia;ano;numero;template_id;estado;area;local;data_evento_utc;lat;lon;profundidade;magnitude;intmax;regiao_intmax;info_macross;titulo;texto;primeira_pagina;ativo;criado_em;criado_por_email
+SISM-2019-0042;2019;42;0003;enviado;Continente;a cerca de 10 km a Sul de Arraiolos;2019-03-12 04:21:10;38,61;-7,98;12,0;3,4;III;Évora;;Sismo de magnitude 3.4 — Arraiolos;"O Instituto Português do Mar e da Atmosfera informa que no dia 12-03-2019 pelas 04:21 (hora local) foi registado um sismo.
+
+Toda e qualquer utilização do conteúdo deste comunicado deverá sempre fazer referência à fonte.";sim;sim;12/03/2019 04:40;
+042/2020;;;1;Enviado;Açores;a cerca de 4 km a Oeste das Furnas (S. Miguel);08-09-2020 16:41;37,77;-25,31;8;3,0;;;;Sismo de magnitude 3.0 — Furnas;O Instituto Português do Mar e da Atmosfera informa que foi registado um sismo.;nao;sim;2020-09-08T16:55:00Z;
+SEM-DATA;;;0009;talvez;Lua;;ontem;;;;x;;;;;;;;;
