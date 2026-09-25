@@ -186,6 +186,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Svg><polyline points="9 18 15 12 9 6" /></Svg>
               <span aria-current="page">{crumbFor(pathname)}</span>
             </nav>
+            {user?.name && (
+              <span className="topbar-greeting">Olá, {user.name}!</span>
+            )}
             <div className="topbar-right">
               <span className="topbar-meta">{now}</span>
               <button className="topbar-icon-btn" onClick={toggleTheme} title="Alternar tema">
