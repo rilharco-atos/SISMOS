@@ -6,11 +6,11 @@ import { comunicadosApi, abrirPdf, systemApi } from './lib/api';
 const COMPONENTES: Record<string, string> = { ftp: 'leitura de XML (FTP)', envio: 'envio de email/SMS', website: 'publicação no website', backup: 'backups' };
 
 const ESTADO_LABELS: Record<string, string> = {
-  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Aprovado',
+  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Ativo',
   ENVIADO: 'Enviado', CANCELADO: 'Cancelado', ARQUIVADO: 'Arquivado',
 };
 const ESTADO_BADGE: Record<string, string> = {
-  RASCUNHO: 'badge', PENDENTE: 'badge badge-warning', APROVADO: 'badge badge-success',
+  RASCUNHO: 'badge', PENDENTE: 'badge badge-warning', APROVADO: 'badge',
   ENVIADO: 'badge badge-info', CANCELADO: 'badge badge-danger', ARQUIVADO: 'badge',
 };
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];

@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { comunicadosApi, deliveryApi, abrirPdf } from '../../lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
-  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Aprovado',
+  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Ativo',
   ENVIADO: 'Enviado', CANCELADO: 'Cancelado', ARQUIVADO: 'Arquivado',
 };
 const WEBSITE_LABEL: Record<string, string> = { NAO_PUBLICADO: 'Não publicado', PUBLICADO: 'Publicado', REMOVIDO: 'Retirado', ERRO: 'Erro' };
@@ -81,7 +81,7 @@ export default function ComunicadoPage() {
         <span className="topbar-title" style={{ flex: 1 }}>{item.referencia} — {item.titulo}</span>
         <div className="topbar-actions">
           <span className={`badge badge-${item.estado.toLowerCase()}`}>{ESTADO_LABELS[item.estado]}</span>
-          {item.estado === 'RASCUNHO' && <button className="btn btn-secondary btn-sm" disabled={!!action} onClick={() => doAction(() => comunicadosApi.aprovar(id), 'Aprovado')}>{action === 'Aprovado' ? '…' : 'Aprovar'}</button>}
+          {item.estado === 'RASCUNHO' && <button className="btn btn-secondary btn-sm" disabled={!!action} onClick={() => doAction(() => comunicadosApi.aprovar(id), 'Aprovado')}>{action === 'Aprovado' ? '…' : 'Ativar'}</button>}
           {item.estado === 'APROVADO' && <button className="btn btn-primary btn-sm" onClick={() => { setSelectedVersao(ultimaVersao?.id ?? ''); setShowEnviarModal(true); }}>Enviar</button>}
           {['RASCUNHO', 'APROVADO'].includes(item.estado) && <button className="btn btn-secondary btn-sm" onClick={() => router.push(`/comunicados/${id}/editar`)}>Editar</button>}
           {!['CANCELADO', 'ARQUIVADO'].includes(item.estado) && <button className="btn btn-secondary btn-sm" onClick={() => router.push(`/comunicados/novo?versaoDe=${id}`)}>Nova versão</button>}
