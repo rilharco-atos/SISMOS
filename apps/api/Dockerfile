@@ -17,6 +17,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY prisma ./prisma
 COPY assets ./assets
+COPY scripts ./scripts
 RUN mkdir -p uploads/imagens uploads/pdfs ftp/incoming ftp/processed
 EXPOSE 3001
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node scripts/seed-demo-prod.js; node dist/main"]

@@ -25,7 +25,8 @@ export default function LoginPage() {
       const data = await res.json();
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('user', JSON.stringify(data.user ?? { email, role: 'ANALISTA' }));
-      router.push('/');
+      // Full reload: garante que o RootLayout re-monta e re-lê o novo user do localStorage.
+      window.location.href = '/';
     } catch {
       setError('Erro de ligação ao servidor');
       setLoading(false);

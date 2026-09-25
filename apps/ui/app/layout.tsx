@@ -115,6 +115,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
     router.push('/login');
   }
 
