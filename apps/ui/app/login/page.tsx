@@ -38,8 +38,7 @@ export default function LoginPage() {
       <div style={{ background: '#fff', borderRadius: 12, padding: '48px 40px', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,36,.3)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <img src="/ipma-logo.png" alt="IPMA" style={{ height: 72, width: 'auto', marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--navy)', letterSpacing: -0.5 }}>Sismos</div>
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Comunicados Sismológicos</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', letterSpacing: -0.3 }}>Comunicados Sismológicos</div>
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}
