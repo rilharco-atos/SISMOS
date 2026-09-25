@@ -37,8 +37,9 @@ export default function LoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--navy)' }}>
       <div style={{ background: '#fff', borderRadius: 12, padding: '48px 40px', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,36,.3)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--navy)', letterSpacing: -1 }}>IPMA SISMOS</div>
-          <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>Comunicados Sismológicos</div>
+          <img src="/ipma-logo.png" alt="IPMA" style={{ height: 72, width: 'auto', marginBottom: 16, display: 'block', margin: '0 auto 16px' }} />
+          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--navy)', letterSpacing: -0.5 }}>Sismos</div>
+          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Comunicados Sismológicos</div>
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}
@@ -58,7 +59,7 @@ export default function LoginPage() {
         </form>
 
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: '#9CA3AF' }}>
-          Instituto Português do Mar e da Atmosfera
+          <strong>Copyright © Instituto Português do Mar e da Atmosfera 2026</strong>
         </div>
       </div>
     </div>

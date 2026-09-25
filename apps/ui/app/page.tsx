@@ -6,7 +6,7 @@ import { comunicadosApi, abrirPdf, systemApi } from './lib/api';
 const COMPONENTES: Record<string, string> = { ftp: 'leitura de XML (FTP)', envio: 'envio de email/SMS', website: 'publicação no website', backup: 'backups' };
 
 const ESTADO_LABELS: Record<string, string> = {
-  RASCUNHO: 'Rascunho', PENDENTE: 'Pendente', APROVADO: 'Aprovado',
+  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Aprovado',
   ENVIADO: 'Enviado', CANCELADO: 'Cancelado', ARQUIVADO: 'Arquivado',
 };
 const ESTADO_BADGE: Record<string, string> = {
@@ -189,15 +189,15 @@ export default function DashboardPage() {
           <thead>
             <tr>
               <th>Referência</th><th>Data Edição</th><th>Pág. Inicial</th><th>Estado</th>
-              <th>Título / Localização</th><th>Versão</th><th>Email</th><th>SMS</th><th></th>
+              <th>Título / Localização</th><th>Início</th><th>Fim</th><th>Versão</th><th>Email</th><th>SMS</th><th></th>
             </tr>
           </thead>
           <tbody>
             {loading && !items.length && Array.from({ length: 4 }).map((_, i) => (
-              <tr key={i}>{Array.from({ length: 9 }).map((__, j) => <td key={j}><div className="skeleton" style={{ height: 14 }} /></td>)}</tr>
+              <tr key={i}>{Array.from({ length: 11 }).map((__, j) => <td key={j}><div className="skeleton" style={{ height: 14 }} /></td>)}</tr>
             ))}
             {!loading && !items.length && (
-              <tr><td colSpan={9} className="cell-empty">Nenhum comunicado encontrado para os filtros selecionados</td></tr>
+              <tr><td colSpan={11} className="cell-empty">Nenhum comunicado encontrado para os filtros selecionados</td></tr>
             )}
             {items.map(item => {
               const versoes: any[] = item.versoes ?? [];
@@ -223,12 +223,14 @@ export default function DashboardPage() {
                     <span className="cell-primary" title={item.titulo}>{item.titulo}</span>
                     <span className="cell-sub">{detalhe || '—'}</span>
                   </td>
+                  <td><span style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-secondary)' }}>{item.websiteInicio ? dataUtc(item.websiteInicio).dia : '—'}</span></td>
+                  <td><span style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--text-secondary)' }}>{item.websiteFim ? dataUtc(item.websiteFim).dia : '—'}</span></td>
                   <td>
                     {ultima ? (
                       <button type="button" className={versoes.length > 1 ? 'badge badge-purple' : 'badge'} style={{ cursor: 'pointer' }}
-                        title={`Abrir PDF da versão ${String(ultima.numero).padStart(3, '0')}`}
+                        title={`Abrir PDF da versão ${String(ultima.numero).padStart(4, '0')}`}
                         onClick={() => abrirPdf(item.id, ultima.id).catch(() => undefined)}>
-                        v{String(ultima.numero).padStart(3, '0')}
+                        {String(ultima.numero).padStart(4, '0')}
                       </button>
                     ) : <span className="delivery-na">—</span>}
                   </td>
