@@ -111,10 +111,6 @@ export default function DashboardPage() {
         </div>
         <div className="page-actions">
           <button className="btn btn-secondary btn-sm" onClick={() => exportarCsv(items)} disabled={!items.length}>Exportar CSV</button>
-          <button className="btn btn-primary" onClick={() => router.push('/comunicados/novo')}>
-            <Svg><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Svg>
-            Novo Comunicado
-          </button>
         </div>
       </div>
 
