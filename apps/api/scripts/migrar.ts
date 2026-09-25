@@ -14,6 +14,7 @@ import * as path from 'path';
 import { lerCsv } from '../src/common/csv';
 import { mapearComunicado, mapearDestinatario, mapearVersao, ComunicadoMigrado, VersaoMigrada } from '../src/modules/migracao/mapeamento';
 import { PdfService } from '../src/modules/comunicados/pdf.service';
+import { StorageService } from '../src/modules/storage/storage.service';
 import { versaoLabel } from '../src/modules/comunicados/documento';
 
 const SYSTEM_USER_ID = 'system';
@@ -48,7 +49,8 @@ function ler(pasta: string, nome: string) {
 async function main() {
   const { pasta, aplicar, gerarPdf } = args();
   const prisma = new PrismaClient();
-  const pdf = new PdfService();
+  const storage = new StorageService(prisma);
+  const pdf = new PdfService(storage);
   const rel: Relatorio = {
     modo: aplicar ? 'aplicado' : 'simulacao', pasta, inicio: new Date().toISOString(),
     comunicados: { lidos: 0, importados: 0, existentes: 0, invalidos: 0 },
@@ -96,7 +98,7 @@ async function main() {
       if (!aplicar) { rel.comunicados.importados++; rel.versoes.importadas += versoes.length; continue; }
 
       try {
-        await importarComunicado(prisma, pdf, c, versoes, utilizadores.get(c.criadoPorEmail ?? '') ?? SYSTEM_USER_ID, pasta, gerarPdf, rel);
+        await importarComunicado(prisma, pdf, storage, c, versoes, utilizadores.get(c.criadoPorEmail ?? '') ?? SYSTEM_USER_ID, pasta, gerarPdf, rel);
         rel.comunicados.importados++;
       } catch (e: any) {
         rel.comunicados.invalidos++;
@@ -153,17 +155,16 @@ async function main() {
   process.exit(rel.erros.length ? 1 : 0);
 }
 
-async function importarComunicado(prisma: PrismaClient, pdf: PdfService, c: ComunicadoMigrado, versoes: VersaoMigrada[], userId: string, pasta: string, gerarPdf: boolean, rel: Relatorio) {
+async function importarComunicado(prisma: PrismaClient, pdf: PdfService, storage: StorageService, c: ComunicadoMigrado, versoes: VersaoMigrada[], userId: string, pasta: string, gerarPdf: boolean, rel: Relatorio) {
   const ultima = versoes[versoes.length - 1];
   const pdfs = await Promise.all(versoes.map(async v => {
     if (v.pdfFicheiro) {
       const origem = path.resolve(pasta, v.pdfFicheiro);
       if (!origem.startsWith(pasta + path.sep) || !fs.existsSync(origem)) throw new Error(`PDF não encontrado: ${v.pdfFicheiro}`);
-      const destino = path.join('uploads', 'pdfs', `${c.referencia.replace(/[^A-Za-z0-9-]/g, '_')}_v${versaoLabel(v.numero)}.pdf`);
-      fs.mkdirSync(path.dirname(destino), { recursive: true });
-      fs.copyFileSync(origem, destino);
+      const chave = `pdfs/${c.referencia.replace(/[^A-Za-z0-9-]/g, '_')}_v${versaoLabel(v.numero)}.pdf`;
+      await storage.guardar(chave, fs.readFileSync(origem), 'application/pdf');
       rel.versoes.pdfsCopiados++;
-      return destino;
+      return chave;
     }
     if (!gerarPdf) return null;
     rel.versoes.pdfsGerados++;

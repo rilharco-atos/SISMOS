@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "vercel-build": "prisma generate && DATABASE_URL=${DATABASE_URL_UNPOOLED:-$DATABASE_URL} prisma db push --skip-generate && DATABASE_URL=${DATABASE_URL_UNPOOLED:-$DATABASE_URL} ts-node --transpile-only prisma/seed.ts && nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
@@ -11,6 +12,7 @@
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts",
     "migrar": "ts-node --transpile-only scripts/migrar.ts",
+    "seed:demo": "ts-node --transpile-only scripts/migrar.ts prisma/demo --aplicar --gerar-pdf",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio"
   },

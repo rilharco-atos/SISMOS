@@ -6,13 +6,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
 import { randomUUID } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ComunicadosService } from './comunicados.service';
 import { CreateComunicadoDto, NovaVersaoDto, PreencherTemplateDto } from './dto/create-comunicado.dto';
 import { UpdateComunicadoDto } from './dto/update-comunicado.dto';
-import { UPLOADS_IMAGENS, tipoImagem } from './documento';
+import { tipoImagem } from './documento';
+import { StorageService } from '../storage/storage.service';
 
 const MAX_XML_BYTES = 256 * 1024;
 const MAX_IMAGEM_BYTES = 5 * 1024 * 1024;
@@ -22,7 +21,7 @@ const MAX_IMAGEM_BYTES = 5 * 1024 * 1024;
 @UseGuards(JwtAuthGuard)
 @Controller('comunicados')
 export class ComunicadosController {
-  constructor(private svc: ComunicadosService) {}
+  constructor(private svc: ComunicadosService, private storage: StorageService) {}
 
   @Get('kpis')
   kpis() { return this.svc.getKpis(); }
@@ -48,8 +47,8 @@ export class ComunicadosController {
   @Post('imagens')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('imagem', { limits: { fileSize: MAX_IMAGEM_BYTES } }))
-  uploadImagemAvulsa(@UploadedFile() file: Express.Multer.File) {
-    return { imagemUrl: this.gravarImagem(file) };
+  async uploadImagemAvulsa(@UploadedFile() file: Express.Multer.File) {
+    return { imagemUrl: await this.gravarImagem(file) };
   }
 
   @Get()
@@ -110,20 +109,21 @@ export class ComunicadosController {
   @Post(':id/imagem')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('imagem', { limits: { fileSize: MAX_IMAGEM_BYTES } }))
-  uploadImagem(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File, @Request() req: any) {
-    return this.svc.update(id, { imagemUrl: this.gravarImagem(file) }, req.user.id);
+  async uploadImagem(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    return this.svc.update(id, { imagemUrl: await this.gravarImagem(file) }, req.user.id);
   }
 
   @Get(':id/versoes/:versaoId/pdf')
   async downloadPdf(@Param('id', ParseUUIDPipe) id: string, @Param('versaoId', ParseUUIDPipe) versaoId: string, @Res() res: Response) {
     const comunicado = await this.svc.findOne(id);
     const versao = comunicado.versoes.find(v => v.id === versaoId);
-    if (!versao?.pdfPath) throw new NotFoundException('PDF não encontrado');
-    const absPath = path.resolve(versao.pdfPath);
-    if (!absPath.startsWith(path.resolve('uploads', 'pdfs')) || !fs.existsSync(absPath)) throw new NotFoundException('Ficheiro PDF não existe no servidor');
+    const ficheiro = await this.storage.ler(versao?.pdfPath);
+    if (!ficheiro) throw new NotFoundException('PDF não encontrado');
+    const nome = `${comunicado.referencia.replace(/[^A-Za-z0-9-]/g, '_')}_v${String(versao!.numero).padStart(3, '0')}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${path.basename(absPath)}"`);
-    fs.createReadStream(absPath).pipe(res);
+    res.setHeader('Content-Disposition', `inline; filename="${nome}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(ficheiro.conteudo);
   }
 
   private lerXml(file?: Express.Multer.File): string {
@@ -132,13 +132,11 @@ export class ComunicadosController {
     return file.buffer.toString('utf-8').replace(/^﻿/, '');
   }
 
-  private gravarImagem(file?: Express.Multer.File): string {
+  private async gravarImagem(file?: Express.Multer.File): Promise<string> {
     if (!file?.buffer?.length) throw new BadRequestException('Imagem não enviada');
     const tipo = tipoImagem(file.buffer);
     if (!tipo) throw new BadRequestException('Apenas imagens PNG ou JPEG são aceites');
-    fs.mkdirSync(UPLOADS_IMAGENS, { recursive: true });
-    const nome = `${randomUUID()}.${tipo === 'png' ? 'png' : 'jpg'}`;
-    fs.writeFileSync(path.join(UPLOADS_IMAGENS, nome), file.buffer);
-    return `/uploads/imagens/${nome}`;
+    const chave = `imagens/${randomUUID()}.${tipo === 'png' ? 'png' : 'jpg'}`;
+    return this.storage.guardar(chave, file.buffer, tipo === 'png' ? 'image/png' : 'image/jpeg');
   }
 }

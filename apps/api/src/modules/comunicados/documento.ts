@@ -1,10 +1,8 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { formatInZone, zoneForArea } from '../../common/tz.util';
 import { TEMPLATES, isTemplateId } from './templates';
 
 export const LOGO_PATH = path.resolve('assets', 'ipma-logo.png');
-export const UPLOADS_IMAGENS = path.resolve('uploads', 'imagens');
 export const EMISSOR = 'Instituto Português do Mar e da Atmosfera, I.P.';
 
 /** Conteúdo de um comunicado tal como aparece no PDF e no corpo HTML do email. */
@@ -62,13 +60,6 @@ export function linhasEvento(d: DocumentoComunicado): [string, string][] {
 
 export function subtituloDocumento(d: DocumentoComunicado): string {
   return `${d.referencia} · v${versaoLabel(d.versao)} · Emitido ${formatInZone(d.dataEmissao, 'UTC', 'longo')} UTC`;
-}
-
-/** Caminho absoluto da imagem anexada (mapa de intensidades), confinado à pasta de uploads. */
-export function resolverImagem(imagemUrl?: string | null): string | null {
-  if (!imagemUrl) return null;
-  const file = path.join(UPLOADS_IMAGENS, path.basename(imagemUrl));
-  return file.startsWith(UPLOADS_IMAGENS) && fs.existsSync(file) ? file : null;
 }
 
 /** Tipo de imagem pelos magic bytes (apenas PNG e JPEG são embebidos). */

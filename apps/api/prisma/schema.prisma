@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native: desenvolvimento/Docker; rhel-openssl-3.0.x: funções Vercel (Amazon Linux 2023)
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -112,6 +114,25 @@ model Comunicado {
   @@index([areaName])
   @@index([origem, criadoEm])
   @@index([eventDateTime])
+}
+
+/// Ficheiros (PDFs, imagens) quando STORAGE_DRIVER=bd — permite correr sem disco persistente (Vercel).
+model Ficheiro {
+  chave       String   @id
+  conteudo    Bytes
+  contentType String
+  tamanho     Int
+  criadoEm    DateTime @default(now())
+}
+
+/// Estado do último sucesso/erro de cada componente (FTP, envio, website), partilhado entre instâncias.
+model EstadoComponente {
+  componente    String    @id
+  ultimoSucesso DateTime?
+  ultimoErro    DateTime?
+  mensagemErro  String?
+  detalhe       Json?
+  atualizadoEm  DateTime  @updatedAt
 }
 
 /// Último número de comunicado atribuído em cada ano (Ref. incrementada automaticamente).

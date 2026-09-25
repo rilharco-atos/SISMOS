@@ -31,6 +31,8 @@ export interface SmsSettings {
   modo: 'test' | 'production';
   /** true quando o modo teste é imposto pelo ambiente (APP_ENV=test) e não pode ser alterado. */
   impostoPeloAmbiente: boolean;
+  /** Demonstração: nenhuma mensagem sai (ENVIO_SIMULADO=true); nunca ativo em produção. */
+  simulado: boolean;
 }
 
 export type Ambiente = 'production' | 'test' | 'development';
@@ -97,8 +99,10 @@ export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpS
  * No ambiente de teste o modo é sempre "test", independentemente do backoffice.
  */
 export function resolverSms(cfg: Partial<SystemConfig> | null, env: Env): SmsSettings {
-  const imposto = resolverAmbiente(env) === 'test';
+  const ambiente = resolverAmbiente(env);
+  const imposto = ambiente === 'test';
   return {
+    simulado: ambiente !== 'production' && (env('ENVIO_SIMULADO') ?? '').toLowerCase() === 'true',
     providerUrl: env('SMS_PROVIDER_URL') ?? '',
     apiKey: env('SMS_API_KEY') ?? '',
     sender: (preenchido(cfg?.smsSender) ? cfg!.smsSender! : env('SMS_SENDER')) || 'IPMA',

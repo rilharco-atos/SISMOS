@@ -1,0 +1,19 @@
+referencia;ano;numero;template_id;estado;area;local;data_evento_utc;lat;lon;profundidade;magnitude;intmax;regiao_intmax;info_macross;titulo;texto;primeira_pagina;ativo;criado_em;criado_por_email
+SISM-2026-0101;2026;101;0001;enviado;Continente;a cerca de 30 km a Sudoeste de Faro;2026-08-06 10:15:36;36,81;-8,16;17,5;2,6;;;;Sismo de magnitude 2.6 — a cerca de 30 km a Sudoeste de Faro;"O Instituto Português do Mar e da Atmosfera informa que no dia 06-08-2026 pelas 11:15 (hora local) foi registado nas estações da Rede Sísmica do Continente, um sismo de magnitude 2.6 (Richter) e cujo epicentro se localizou a cerca de 30 km a Sudoeste de Faro.
+
+Até à elaboração deste comunicado não foi recebida nenhuma informação confirmando que este sismo tenha sido sentido.
+
+Se a situação o justificar serão emitidos novos comunicados.";nao;sim;2026-08-06 10:18:00;
+SISM-2026-0102;2026;102;0003;enviado;Açores;a cerca de 4 km a Oeste das Furnas (S. Miguel);2026-08-21 16:41:10;37,77;-25,31;8,0;3,0;III;Furnas, Povoação;sentido com intensidade máxima III (escala de Mercalli modificada) na freguesia das Furnas;Sismo de magnitude 3.0 — Furnas (S. Miguel);"O Instituto Português do Mar e da Atmosfera informa que no dia 21-08-2026 pelas 16:41 (hora local) foi registado nas estações da Rede Sísmica do Arquipélago dos Açores, um sismo de magnitude 3.0 (Richter) e cujo epicentro se localizou a cerca de 4 km a Oeste das Furnas (S. Miguel).
+
+Este sismo, de acordo com a informação disponível até ao momento, não causou danos pessoais ou materiais e foi sentido com intensidade máxima III (escala de Mercalli modificada) na freguesia das Furnas.";sim;sim;2026-08-21 16:58:00;
+SISM-2026-0103;2026;103;0004;enviado;Continente;a cerca de 12 km a Oeste de Arraiolos;2026-09-03 03:22:45;38,72;-8,02;11,0;4,1;V;Arraiolos, Évora;;Sismo de magnitude 4.1 — Arraiolos (Évora);"O Instituto Português do Mar e da Atmosfera informa que no dia 03-09-2026 pelas 04:22 (hora local) foi registado nas estações da Rede Sísmica do Continente, um sismo de magnitude 4.1 (Richter) e cujo epicentro se localizou a cerca de 12 km a Oeste de Arraiolos.
+
+De acordo com a informação disponível até ao momento, este sismo não causou danos pessoais ou materiais tendo sido fortemente sentido na região de Arraiolos, Évora, atingindo uma intensidade máxima de V.";sim;sim;2026-09-03 03:40:00;
+SISM-2026-0104;2026;104;0002;aprovado;Madeira;a cerca de 25 km a Norte do Funchal;2026-09-15 21:07:12;32,88;-16,91;22,0;2,9;;;;Sismo de magnitude 2.9 — a Norte do Funchal;"O Instituto Português do Mar e da Atmosfera informa que no dia 15-09-2026 pelas 22:07 (hora local) foi registado nas estações da Rede Sísmica do Arquipélago da Madeira, um sismo de magnitude 2.9 (Richter) e cujo epicentro se localizou a cerca de 25 km a Norte do Funchal.
+
+De acordo com a informação disponível, este sismo foi sentido, devendo em breve ser emitido novo comunicado com informação instrumental e macrossímica atualizada.";nao;sim;2026-09-15 21:20:00;
+SISM-2026-0105;2026;105;0001;rascunho;Continente;a cerca de 40 km a Sul de Sagres;2026-09-23 06:48:03;36,63;-8,95;25,0;2,3;;;;Sismo de magnitude 2.3 — a Sul de Sagres;"O Instituto Português do Mar e da Atmosfera informa que no dia 23-09-2026 pelas 07:48 (hora local) foi registado nas estações da Rede Sísmica do Continente, um sismo de magnitude 2.3 (Richter) e cujo epicentro se localizou a cerca de 40 km a Sul de Sagres.
+
+Até à elaboração deste comunicado não foi recebida nenhuma informação confirmando que este sismo tenha sido sentido.";nao;sim;2026-09-23 06:52:00;
+SISM-2026-0106;2026;106;0000;cancelado;Açores;Grupo Central;2026-09-10 12:30:00;38,65;-27,22;10,0;1,9;;;;Comunicado cancelado — localização revista;"[Comunicado cancelado por revisão da localização do epicentro.]";nao;nao;2026-09-10 12:35:00;

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 type Labels = Record<string, string>;
 type Tipo = 'counter' | 'gauge';
@@ -60,7 +61,9 @@ export class MetricsService {
   private metricas = new Map<string, Metrica>();
   private componentes = new Map<string, EstadoComponente>();
 
-  constructor() {
+  private readonly logger = new Logger(MetricsService.name);
+
+  constructor(@Optional() private prisma?: PrismaService) {
     this.set(M.ARRANQUE, Math.floor(Date.now() / 1000));
   }
 
@@ -79,19 +82,45 @@ export class MetricsService {
     return this.metricas.get(nome)?.valores.get(chave(labels))?.valor ?? 0;
   }
 
-  /** Regista o resultado da última operação de um componente. */
+  /** Regista o resultado da última operação de um componente (memória + base de dados, partilhado entre instâncias). */
   sucesso(componente: string, detalhe?: Record<string, unknown>): void {
     const e = this.componentes.get(componente) ?? {};
-    this.componentes.set(componente, { ...e, ultimoSucesso: new Date().toISOString(), detalhe: detalhe ?? e.detalhe });
+    const agora = new Date();
+    this.componentes.set(componente, { ...e, ultimoSucesso: agora.toISOString(), detalhe: detalhe ?? e.detalhe });
+    this.persistir(componente, { ultimoSucesso: agora, ...(detalhe ? { detalhe: detalhe as any } : {}) });
   }
 
   erro(componente: string, mensagem: string, detalhe?: Record<string, unknown>): void {
     const e = this.componentes.get(componente) ?? {};
-    this.componentes.set(componente, { ...e, ultimoErro: new Date().toISOString(), mensagemErro: mensagem, detalhe: detalhe ?? e.detalhe });
+    const agora = new Date();
+    this.componentes.set(componente, { ...e, ultimoErro: agora.toISOString(), mensagemErro: mensagem, detalhe: detalhe ?? e.detalhe });
+    this.persistir(componente, { ultimoErro: agora, mensagemErro: mensagem.slice(0, 500), ...(detalhe ? { detalhe: detalhe as any } : {}) });
   }
 
   estado(componente: string): EstadoComponente | undefined {
     return this.componentes.get(componente);
+  }
+
+  /** Estado a partir da base de dados (válido em qualquer instância); recorre à memória se a BD falhar. */
+  async estadoPartilhado(componente: string): Promise<EstadoComponente | undefined> {
+    if (!this.prisma) return this.estado(componente);
+    try {
+      const r = await this.prisma.estadoComponente.findUnique({ where: { componente } });
+      if (!r) return this.estado(componente);
+      return {
+        ultimoSucesso: r.ultimoSucesso?.toISOString(), ultimoErro: r.ultimoErro?.toISOString(),
+        mensagemErro: r.mensagemErro ?? undefined, detalhe: (r.detalhe as Record<string, unknown>) ?? undefined,
+      };
+    } catch {
+      return this.estado(componente);
+    }
+  }
+
+  private persistir(componente: string, dados: Record<string, unknown>) {
+    if (!this.prisma) return;
+    this.prisma.estadoComponente
+      .upsert({ where: { componente }, create: { componente, ...dados }, update: dados })
+      .catch((e: Error) => this.logger.warn(JSON.stringify({ msg: 'Estado do componente não persistido', componente, erro: e.message })));
   }
 
   /** Texto no formato de exposição Prometheus 0.0.4. */

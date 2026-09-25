@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ftp from 'basic-ftp';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { ComunicadosService, SYSTEM_USER_ID } from '../comunicados/comunicados.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AuditService } from '../audit/audit.service';
@@ -11,6 +12,7 @@ import { SettingsService } from '../settings/settings.service';
 import { FtpSettings } from '../settings/settings.resolver';
 import { MetricsService, M } from '../observability/metrics.service';
 import { avaliarEnvioAutomatico } from '../comunicados/templates';
+import { apagarFicheiro } from '../../common/fs.util';
 
 @Injectable()
 export class PollingService implements OnModuleInit {
@@ -27,15 +29,33 @@ export class PollingService implements OnModuleInit {
     private metrics: MetricsService,
   ) {}
 
+  /** "interno": cron no próprio processo (servidor permanente). "externo": chamado via GET /api/cron/polling (Vercel Cron, etc.). */
+  get agendamento(): 'interno' | 'externo' {
+    const v = (this.config.get<string>('SCHEDULER') ?? '').toLowerCase();
+    if (v === 'interno' || v === 'externo') return v;
+    return this.config.get('VERCEL') ? 'externo' : 'interno';
+  }
+
+  /** Pastas locais para os XML descarregados; em ambientes com disco só de leitura usa a pasta temporária. */
+  private pasta(tipo: 'incoming' | 'processed'): string {
+    const definida = this.config.get<string>(tipo === 'incoming' ? 'FTP_LOCAL_INCOMING_DIR' : 'FTP_LOCAL_PROCESSED_DIR');
+    return definida ?? (this.config.get('VERCEL') ? path.join(os.tmpdir(), 'ftp', tipo) : path.join('.', 'ftp', tipo));
+  }
+
   onModuleInit() {
-    fs.mkdirSync(this.config.get('FTP_LOCAL_INCOMING_DIR', './ftp/incoming'), { recursive: true });
-    fs.mkdirSync(this.config.get('FTP_LOCAL_PROCESSED_DIR', './ftp/processed'), { recursive: true });
+    for (const tipo of ['incoming', 'processed'] as const) {
+      try {
+        fs.mkdirSync(this.pasta(tipo), { recursive: true });
+      } catch (e: any) {
+        this.logger.warn(JSON.stringify({ msg: 'Pasta local do FTP indisponível', pasta: this.pasta(tipo), erro: e.message }));
+      }
+    }
   }
 
   /** Verifica a cada 5 s; o polling efetivo respeita o intervalo configurado no backoffice. */
   @Cron(CronExpression.EVERY_5_SECONDS)
   async tick() {
-    if (this.processing) return;
+    if (this.processing || this.agendamento !== 'interno') return;
     const ftpCfg = await this.settings.ftp();
     if (!ftpCfg.host || Date.now() - this.ultimoPoll < ftpCfg.pollIntervalMs) return;
     await this.pollFtp(ftpCfg);
@@ -59,8 +79,8 @@ export class PollingService implements OnModuleInit {
 
       const incomingDir = cfg.incomingDir;
       const processedDir = cfg.processedDir;
-      const localIn = this.config.get('FTP_LOCAL_INCOMING_DIR', './ftp/incoming');
-      const localProc = this.config.get('FTP_LOCAL_PROCESSED_DIR', './ftp/processed');
+      const localIn = this.pasta('incoming');
+      const localProc = this.pasta('processed');
 
       const list = await client.list(incomingDir);
       const xmlFiles = list.filter(f => f.name.endsWith('.xml') && f.type === ftp.FileType.File);
@@ -90,7 +110,7 @@ export class PollingService implements OnModuleInit {
           if (e instanceof BadRequestException) {
             // XML inválido não volta a ser processado: é arquivado com prefixo e fica registado.
             await client.rename(remotePath, `${processedDir}/REJEITADO_${nome}`).catch(() => undefined);
-            fs.rmSync(localPath, { force: true });
+            apagarFicheiro(localPath);
             await this.audit.log({ userId: SYSTEM_USER_ID, acao: 'XML_REJEITADO', entidade: 'Ficheiro', entidadeId: nome, detalhes: { erro: e.message } });
           }
           this.logger.error(JSON.stringify({ msg: 'Erro a processar ficheiro FTP', ficheiro: nome, erro: e.message }));

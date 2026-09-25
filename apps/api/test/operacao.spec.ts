@@ -10,6 +10,8 @@ import { MetricsService, M } from '../src/modules/observability/metrics.service'
 import { lerCsv } from '../src/common/csv';
 import { mapearComunicado, mapearDestinatario, mapearVersao } from '../src/modules/migracao/mapeamento';
 import { FicheiroPublisher, criarPublisher, PublicacaoWebsite } from '../src/modules/website/publishers';
+import { StorageService, chaveDe, resolverDriver } from '../src/modules/storage/storage.service';
+import { urlComPooler } from '../src/prisma/prisma.service';
 
 const HORA = 3600_000;
 
@@ -20,6 +22,12 @@ describe('Ambiente de testes', () => {
     assert.equal(r.modo, 'test');
     assert.equal(r.impostoPeloAmbiente, true);
     assert.equal(resolverAmbiente(env), 'test');
+  });
+
+  test('envio simulado só fora de produção', () => {
+    assert.equal(resolverSms(null, k => ({ APP_ENV: 'test', ENVIO_SIMULADO: 'true' } as any)[k]).simulado, true);
+    assert.equal(resolverSms(null, k => ({ APP_ENV: 'production', ENVIO_SIMULADO: 'true' } as any)[k]).simulado, false);
+    assert.equal(resolverSms(null, k => ({ APP_ENV: 'test' } as any)[k]).simulado, false);
   });
 
   test('em produção o backoffice decide', () => {
@@ -127,6 +135,39 @@ describe('Migração — mapeamento', () => {
     assert.ok(ok.ok && ok.valor.listas.join() === 'LIC,LGC' && ok.valor.email === 'a@ipma.pt' && ok.valor.interno);
     assert.ok(!mapearDestinatario({ nome: 'B', listas: 'LIC' }).ok);
     assert.ok(!mapearDestinatario({ nome: 'C', email: 'c@x.pt', listas: 'ZZZ' }).ok);
+  });
+});
+
+describe('Portabilidade (Vercel / servidor)', () => {
+  test('chaves de ficheiro aceitam formatos antigos e rejeitam caminhos perigosos', () => {
+    assert.equal(chaveDe('uploads\\pdfs\\SISM-2026-0001_v001.pdf'), 'pdfs/SISM-2026-0001_v001.pdf');
+    assert.equal(chaveDe('/uploads/imagens/abc.png'), 'imagens/abc.png');
+    assert.equal(chaveDe('pdfs/X.pdf'), 'pdfs/X.pdf');
+    assert.equal(chaveDe('../../etc/passwd'), null);
+    assert.equal(chaveDe('outra/x.pdf'), null);
+    assert.equal(chaveDe(null), null);
+  });
+
+  test('driver de armazenamento: bd na Vercel, disco por omissão', () => {
+    assert.equal(resolverDriver(() => undefined), 'disco');
+    assert.equal(resolverDriver(k => ({ VERCEL: '1' } as any)[k]), 'bd');
+    assert.equal(resolverDriver(k => ({ STORAGE_DRIVER: 'bd' } as any)[k]), 'bd');
+  });
+
+  test('armazenamento em disco: guardar, ler e remover', async () => {
+    const s = new StorageService(null as any, 'disco');
+    const chave = `pdfs/teste-${Date.now()}.pdf`;
+    await s.guardar(chave, Buffer.from('%PDF-1.4 teste'), 'application/pdf');
+    assert.equal((await s.ler(chave))?.conteudo.toString(), '%PDF-1.4 teste');
+    await s.remover(chave);
+    assert.equal(await s.ler(chave), null);
+    await assert.rejects(s.guardar('../fora.txt', Buffer.from('x'), 'text/plain'));
+  });
+
+  test('URL com pooler recebe pgbouncer=true; sem pooler fica igual', () => {
+    assert.equal(urlComPooler('postgresql://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/db?sslmode=require'), 'postgresql://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/db?sslmode=require&pgbouncer=true');
+    assert.equal(urlComPooler('postgresql://u:p@localhost:5433/sismos'), 'postgresql://u:p@localhost:5433/sismos');
+    assert.equal(urlComPooler('postgresql://u:p@h-pooler.x/db?pgbouncer=true'), 'postgresql://u:p@h-pooler.x/db?pgbouncer=true');
   });
 });
 

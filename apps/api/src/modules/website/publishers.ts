@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { apagarFicheiro } from '../../common/fs.util';
 
 /** Conteúdo publicado no website (título + texto aprovado, como indicado pelo IPMA na entrevista). */
 export interface PublicacaoWebsite {
@@ -94,7 +95,7 @@ export class FicheiroPublisher implements WebsitePublisher {
   }
 
   async remover(referencia: string): Promise<void> {
-    fs.rmSync(path.join(this.dir, `${this.nomeSeguro(referencia)}.json`), { force: true });
+    apagarFicheiro(path.join(this.dir, `${this.nomeSeguro(referencia)}.json`));
     this.atualizarIndice(indice => indice.filter(i => i.referencia !== referencia));
   }
 

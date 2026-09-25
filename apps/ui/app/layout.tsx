@@ -54,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [pinned, setPinned] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [now, setNow] = useState('');
-  const [saude, setSaude] = useState<{ ambiente?: string; modoEnvio?: string } | null>(null);
+  const [saude, setSaude] = useState<{ ambiente?: string; modoEnvio?: string; envioSimulado?: boolean } | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>();
   const userBtn = useRef<HTMLButtonElement>(null);
 
@@ -200,7 +200,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="main">
             {saude?.ambiente === 'test' && (
               <div className="env-banner" role="status">
-                <strong>Ambiente de testes</strong> — os emails e SMS são enviados apenas para contactos internos do IPMA e nada é publicado no website.
+                {saude.envioSimulado
+                  ? <><strong>Demonstração</strong> — envios simulados: nenhum email ou SMS sai da plataforma e nada é publicado no website. Dados fictícios.</>
+                  : <><strong>Ambiente de testes</strong> — os emails e SMS são enviados apenas para contactos internos do IPMA e nada é publicado no website.</>}
               </div>
             )}
             {saude?.ambiente !== 'test' && saude?.modoEnvio === 'test' && (

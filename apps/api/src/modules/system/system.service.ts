@@ -44,17 +44,18 @@ export class SystemService {
     const [db, ftpCfg, sms] = await Promise.all([this.dbOk(), this.settings.ftp(), this.settings.sms()]);
     const integracao = this.website.integracao;
     const ambiente = this.settings.ambiente();
+    const [eFtp, eEnvio, eWebsite] = await Promise.all(['ftp', 'envio', 'website'].map(c => this.metrics.estadoPartilhado(c)));
     const componentes = {
-      ftp: avaliarFtp(this.metrics.estado('ftp'), !!ftpCfg.host, ftpCfg.pollIntervalMs),
-      envio: avaliarEnvio(this.metrics.estado('envio')),
-      website: avaliarWebsite(this.metrics.estado('website'), integracao.ativa,
+      ftp: avaliarFtp(eFtp, !!ftpCfg.host, ftpCfg.pollIntervalMs),
+      envio: avaliarEnvio(eEnvio),
+      website: avaliarWebsite(eWebsite, integracao.ativa,
         ambiente === 'test' ? 'Desativado no ambiente de testes' : integracao.configurado ? undefined : 'Integração não configurada'),
       backup: avaliarBackup(this.ultimoBackup(), Number(this.config.get('BACKUP_MAX_IDADE_HORAS')) || 26, ambiente === 'production'),
     };
     return {
       status: estadoGlobal(db, Object.values(componentes)),
       db: db ? 'ok' : 'error',
-      ambiente, modoEnvio: sms.modo,
+      ambiente, modoEnvio: sms.modo, envioSimulado: sms.simulado,
       timestamp: new Date().toISOString(),
       componentes,
     };
@@ -137,7 +138,7 @@ export class SystemService {
   async getHealth() {
     const d = await this.saudeDetalhada();
     return {
-      status: d.status, db: d.db, ambiente: d.ambiente, modoEnvio: d.modoEnvio, timestamp: d.timestamp,
+      status: d.status, db: d.db, ambiente: d.ambiente, modoEnvio: d.modoEnvio, envioSimulado: d.envioSimulado, timestamp: d.timestamp,
       componentes: Object.fromEntries(Object.entries(d.componentes).map(([k, v]) => [k, v.estado])),
     };
   }

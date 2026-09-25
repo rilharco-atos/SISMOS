@@ -4,12 +4,12 @@ import * as nodemailer from 'nodemailer';
 import type { Attachment } from 'nodemailer/lib/mailer';
 import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
-import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ListasService } from '../listas/listas.service';
 import { AuditService } from '../audit/audit.service';
 import { ComunicadosService } from '../comunicados/comunicados.service';
-import { DocumentoComunicado, LOGO_PATH, resolverImagem, tipoImagem, versaoLabel } from '../comunicados/documento';
+import { DocumentoComunicado, LOGO_PATH, tipoImagem, versaoLabel } from '../comunicados/documento';
+import { StorageService } from '../storage/storage.service';
 import { ComunicadoEstado, ListaKey } from '@prisma/client';
 import { CID_LOGO, CID_MAPA, construirEmailHtml, construirEmailTexto } from './email-template';
 import { construirSms } from './sms';
@@ -21,7 +21,7 @@ import { PREFIXO_ASSUNTO_TESTE, chaveEmail, chaveTelefone, elegivel } from './po
 
 interface Resultado { enviados: number; falhas: number; ignorados: number; erro?: string }
 type Modo = 'test' | 'production';
-type Email = ReturnType<DeliveryService['prepararEmail']>;
+type Email = Awaited<ReturnType<DeliveryService['prepararEmail']>>;
 
 @Injectable()
 export class DeliveryService {
@@ -36,6 +36,7 @@ export class DeliveryService {
     private settings: SettingsService,
     private metrics: MetricsService,
     private website: WebsiteService,
+    private storage: StorageService,
   ) {}
 
   /**
@@ -54,12 +55,12 @@ export class DeliveryService {
 
     const emailsEnviados = new Set<string>();
     const telefonesEnviados = new Set<string>();
-    const email = emailListas.length ? this.prepararEmail(documento, versao.pdfPath, modo) : null;
+    const email = emailListas.length ? await this.prepararEmail(documento, versao.pdfPath, modo) : null;
     const transporter = emailListas.length ? this.criarTransporter(smtp) : null;
     const total = { emailFalhas: 0, smsFalhas: 0, ignorados: 0 };
 
     for (const lista of emailListas) {
-      const r = await this.enviarEmails(transporter!, smtp, email!, await this.listas.findRawByLista(lista), modo, emailsEnviados);
+      const r = await this.enviarEmails(transporter!, smtp, email!, await this.listas.findRawByLista(lista), modo, emailsEnviados, sms.simulado);
       total.emailFalhas += r.falhas; total.ignorados += r.ignorados;
       await this.prisma.emailEnvio.create({ data: { versaoId, lista, totalEnviado: r.enviados, totalFalha: r.falhas, sucesso: r.falhas === 0, erro: r.erro } });
     }
@@ -75,7 +76,7 @@ export class DeliveryService {
       userId, acao: 'ENVIAR', entidade: 'Comunicado', entidadeId: comunicadoId, comunicadoId,
       detalhes: {
         versao: versaoLabel(versao.numero), emailListas, smsListas, emails: emailsEnviados.size, sms: telefonesEnviados.size,
-        falhasEmail: total.emailFalhas, falhasSms: total.smsFalhas, ignoradosModoTeste: total.ignorados, modo, origemSmtp: smtp.origem,
+        falhasEmail: total.emailFalhas, falhasSms: total.smsFalhas, ignoradosModoTeste: total.ignorados, modo, simulado: sms.simulado, origemSmtp: smtp.origem,
       },
     });
 
@@ -83,7 +84,7 @@ export class DeliveryService {
     return {
       success: total.emailFalhas + total.smsFalhas === 0,
       emails: emailsEnviados.size, sms: telefonesEnviados.size,
-      falhas: total.emailFalhas + total.smsFalhas, ignoradosModoTeste: total.ignorados, modo, website,
+      falhas: total.emailFalhas + total.smsFalhas, ignoradosModoTeste: total.ignorados, modo, simulado: sms.simulado, website,
     };
   }
 
@@ -91,7 +92,7 @@ export class DeliveryService {
   async preVisualizarEmail(comunicadoId: string, versaoId: string): Promise<string> {
     const comunicado = await this.prisma.comunicado.findUniqueOrThrow({ where: { id: comunicadoId } });
     const versao = await this.prisma.versao.findFirstOrThrow({ where: { id: versaoId, comunicadoId } });
-    const email = this.prepararEmail(await this.documentoDaVersao(comunicado, versao), versao.pdfPath, (await this.settings.sms()).modo);
+    const email = await this.prepararEmail(await this.documentoDaVersao(comunicado, versao), versao.pdfPath, (await this.settings.sms()).modo);
     let html = email.html;
     for (const a of email.attachments) {
       if (a.cid && Buffer.isBuffer(a.content)) html = html.replace(`cid:${a.cid}`, `data:${a.contentType};base64,${a.content.toString('base64')}`);
@@ -115,16 +116,16 @@ export class DeliveryService {
     );
   }
 
-  private prepararEmail(documento: DocumentoComunicado, pdfPath: string | null | undefined, modo: Modo) {
+  private async prepararEmail(documento: DocumentoComunicado, pdfPath: string | null | undefined, modo: Modo) {
     const attachments: Attachment[] = [];
-    const logo = this.lerImagem(LOGO_PATH);
+    const logo = this.imagem(fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null);
     if (logo) attachments.push({ filename: 'ipma-logo.png', content: logo.buf, contentType: logo.mime, cid: CID_LOGO, contentDisposition: 'inline' });
-    const mapa = this.lerImagem(resolverImagem(documento.imagemUrl));
+    const mapa = this.imagem((await this.storage.ler(documento.imagemUrl))?.conteudo ?? null);
     if (mapa) attachments.push({ filename: `mapa-intensidades.${mapa.ext}`, content: mapa.buf, contentType: mapa.mime, cid: CID_MAPA, contentDisposition: 'inline' });
 
-    const pdfAbs = pdfPath ? path.resolve(pdfPath) : null;
-    if (pdfAbs && pdfAbs.startsWith(path.resolve('uploads', 'pdfs')) && fs.existsSync(pdfAbs)) {
-      attachments.push({ filename: `${documento.referencia}_v${versaoLabel(documento.versao)}.pdf`, content: fs.readFileSync(pdfAbs), contentType: 'application/pdf' });
+    const pdf = await this.storage.ler(pdfPath);
+    if (pdf) {
+      attachments.push({ filename: `${documento.referencia}_v${versaoLabel(documento.versao)}.pdf`, content: pdf.conteudo, contentType: 'application/pdf' });
     } else {
       this.logger.warn(JSON.stringify({ msg: 'PDF da versão não encontrado; email segue sem anexo', referencia: documento.referencia, versao: documento.versao }));
     }
@@ -137,15 +138,14 @@ export class DeliveryService {
     };
   }
 
-  private lerImagem(file: string | null) {
-    if (!file || !fs.existsSync(file)) return null;
-    const buf = fs.readFileSync(file);
+  private imagem(buf: Buffer | null) {
+    if (!buf) return null;
     const tipo = tipoImagem(buf);
     if (!tipo) return null;
     return { buf, mime: tipo === 'png' ? 'image/png' : 'image/jpeg', ext: tipo === 'png' ? 'png' : 'jpg' };
   }
 
-  private async enviarEmails(transporter: nodemailer.Transporter, smtp: SmtpSettings, email: Email, destinatarios: any[], modo: Modo, jaEnviados: Set<string>): Promise<Resultado> {
+  private async enviarEmails(transporter: nodemailer.Transporter, smtp: SmtpSettings, email: Email, destinatarios: any[], modo: Modo, jaEnviados: Set<string>, simulado: boolean): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     for (const d of destinatarios) {
       const destino: string | null = d.destinatario.email;
@@ -154,10 +154,10 @@ export class DeliveryService {
       const chave = chaveEmail(destino);
       if (jaEnviados.has(chave)) continue;
       try {
-        await transporter.sendMail({ from: smtp.from, to: destino, ...email });
+        if (!simulado) await transporter.sendMail({ from: smtp.from, to: destino, ...email });
         jaEnviados.add(chave);
         r.enviados++;
-        this.metrics.inc(M.ENVIOS, { canal: 'email', resultado: 'ok' });
+        this.metrics.inc(M.ENVIOS, { canal: 'email', resultado: simulado ? 'simulado' : 'ok' });
       } catch (e: any) {
         r.falhas++;
         r.erro = e.message;
@@ -171,7 +171,7 @@ export class DeliveryService {
   private async enviarSms(sms: SmsSettings, mensagem: string, destinatarios: any[], jaEnviados: Set<string>): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     const comTelefone = destinatarios.filter(d => d.destinatario.telefone);
-    if (!sms.providerUrl) {
+    if (!sms.providerUrl && !sms.simulado) {
       if (comTelefone.length) this.logger.error(JSON.stringify({ msg: 'SMS não enviados: SMS_PROVIDER_URL não configurado', destinatarios: comTelefone.length }));
       return { ...r, falhas: comTelefone.length, erro: 'SMS_PROVIDER_URL não configurado' };
     }
@@ -180,10 +180,10 @@ export class DeliveryService {
       const chave = chaveTelefone(d.destinatario.telefone);
       if (jaEnviados.has(chave)) continue;
       try {
-        await firstValueFrom(this.http.post(sms.providerUrl, { apiKey: sms.apiKey, sender: sms.sender, to: d.destinatario.telefone, message: mensagem }, { timeout: 10000 }));
+        if (!sms.simulado) await firstValueFrom(this.http.post(sms.providerUrl, { apiKey: sms.apiKey, sender: sms.sender, to: d.destinatario.telefone, message: mensagem }, { timeout: 10000 }));
         jaEnviados.add(chave);
         r.enviados++;
-        this.metrics.inc(M.ENVIOS, { canal: 'sms', resultado: 'ok' });
+        this.metrics.inc(M.ENVIOS, { canal: 'sms', resultado: sms.simulado ? 'simulado' : 'ok' });
       } catch (e: any) {
         r.falhas++;
         r.erro = e.message;

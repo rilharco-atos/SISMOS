@@ -1,0 +1,8 @@
+nome;organizacao;email;telefone;listas;interno;ativo
+Centro de Operações (demo);IPMA;operacoes.demo@example.org;+351 910 000 001;LIC|LGC|LIA|LGA|LIM|LGM;sim;sim
+Analista de Serviço (demo);IPMA;analista.demo@example.org;+351 910 000 002;LIC|LIA|LIM;sim;sim
+Proteção Civil Nacional (demo);ANEPC;anepc.demo@example.org;+351 910 000 101;LIC|LGC;nao;sim
+Proteção Civil Açores (demo);SRPCBA;prociv.acores.demo@example.org;+351 910 000 102;LIA|LGA;nao;sim
+Proteção Civil Madeira (demo);SRPC Madeira;prociv.madeira.demo@example.org;+351 910 000 103;LIM|LGM;nao;sim
+Gabinete Ministerial (demo);Governo;gabinete.demo@example.org;;LIC;nao;sim
+Redação Agência de Notícias (demo);Comunicação Social;redacao.demo@example.org;;LGC|LGA|LGM;nao;sim

@@ -1,10 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import * as fs from 'fs';
-import * as path from 'path';
 import {
-  DocumentoComunicado, EMISSOR, LOGO_PATH, linhasEvento, resolverImagem, subtituloDocumento, tipoImagem, versaoLabel,
+  DocumentoComunicado, EMISSOR, LOGO_PATH, linhasEvento, subtituloDocumento, tipoImagem, versaoLabel,
 } from './documento';
+import { StorageService } from '../storage/storage.service';
 
 const A4: [number, number] = [595, 842];
 const MARGEM = 50;
@@ -23,15 +23,14 @@ function winAnsi(s: string): string {
 export class PdfService {
   private readonly logger = new Logger(PdfService.name);
 
-  /** Gera o PDF do comunicado e devolve o caminho relativo do ficheiro gravado. */
+  constructor(@Optional() private storage?: StorageService) {}
+
+  /** Gera o PDF do comunicado, guarda-o no armazenamento e devolve a chave ("pdfs/..."). */
   async generate(data: DocumentoComunicado): Promise<string> {
+    if (!this.storage) throw new Error('Armazenamento não configurado');
     const bytes = await this.render(data);
-    const dir = path.join('uploads', 'pdfs');
-    fs.mkdirSync(dir, { recursive: true });
-    const filename = `${data.referencia.replace(/[^A-Za-z0-9-]/g, '_')}_v${versaoLabel(data.versao)}.pdf`;
-    const filepath = path.join(dir, filename);
-    fs.writeFileSync(filepath, bytes);
-    return filepath;
+    const chave = `pdfs/${data.referencia.replace(/[^A-Za-z0-9-]/g, '_')}_v${versaoLabel(data.versao)}.pdf`;
+    return this.storage.guardar(chave, bytes, 'application/pdf');
   }
 
   /** Desenha o documento A4 (várias páginas se necessário). */
@@ -42,8 +41,8 @@ export class PdfService {
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
     const mono = await doc.embedFont(StandardFonts.Courier);
-    const logo = await this.embedFile(doc, LOGO_PATH);
-    const mapa = await this.embedFile(doc, resolverImagem(data.imagemUrl));
+    const logo = await this.embedBuffer(doc, fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null, 'logo');
+    const mapa = await this.embedBuffer(doc, (await this.storage?.ler(data.imagemUrl))?.conteudo ?? null, 'mapa');
 
     const [W, H] = A4;
     const largura = W - MARGEM * 2;
@@ -121,15 +120,14 @@ export class PdfService {
     return doc.save();
   }
 
-  private async embedFile(doc: PDFDocument, file: string | null): Promise<PDFImage | null> {
-    if (!file || !fs.existsSync(file)) return null;
+  private async embedBuffer(doc: PDFDocument, buf: Buffer | null, nome: string): Promise<PDFImage | null> {
+    if (!buf) return null;
     try {
-      const buf = fs.readFileSync(file);
       const tipo = tipoImagem(buf);
       if (tipo === 'png') return await doc.embedPng(buf);
       if (tipo === 'jpeg') return await doc.embedJpg(buf);
     } catch (e: any) {
-      this.logger.warn(JSON.stringify({ msg: 'Imagem não embebida no PDF', file: path.basename(file), erro: e.message }));
+      this.logger.warn(JSON.stringify({ msg: 'Imagem não embebida no PDF', imagem: nome, erro: e.message }));
     }
     return null;
   }
