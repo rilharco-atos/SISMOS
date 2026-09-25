@@ -1,5 +1,6 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
+ENV PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x
 COPY package*.json ./
 RUN npm ci
 COPY . .
