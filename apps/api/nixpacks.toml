@@ -1,0 +1,2 @@
+[variables]
+PRISMA_CLI_BINARY_TARGETS = "linux-musl-openssl-3.0.x"
