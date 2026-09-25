@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { comunicadosApi, deliveryApi, abrirPdf } from '../../lib/api';
 
 const ESTADO_LABELS: Record<string, string> = {
-  RASCUNHO: 'Ativo', PENDENTE: 'Pendente', APROVADO: 'Ativo',
+  RASCUNHO: 'Rascunho', PENDENTE: 'Pendente', APROVADO: 'Ativo',
   ENVIADO: 'Enviado', CANCELADO: 'Cancelado', ARQUIVADO: 'Arquivado',
 };
 const WEBSITE_LABEL: Record<string, string> = { NAO_PUBLICADO: 'Não publicado', PUBLICADO: 'Publicado', REMOVIDO: 'Retirado', ERRO: 'Erro' };
