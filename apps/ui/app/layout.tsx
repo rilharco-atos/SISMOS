@@ -146,7 +146,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             onMouseLeave={() => { if (!pinned) closeTimer.current = setTimeout(() => setOpen(false), 180); }}
           >
             <a className="nav-brand" href="/" onClick={e => { e.preventDefault(); go('/'); }}>
-              <img className="nav-brand-logo" src="/ipma-logo.png" alt="IPMA" />
+              <img className="nav-brand-logo" src="/ipma-logo-sidebar.png" alt="IPMA" />
               <span className="nav-brand-rule" />
               <span className="nav-brand-copy">
                 <span className="nav-brand-name">SISMOS</span>

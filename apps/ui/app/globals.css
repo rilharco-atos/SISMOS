@@ -87,7 +87,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 50%; background: var(--sidebar-orb); z-index: -1; pointer-events: none;
 }
 .nav-brand { display: flex; align-items: center; gap: 12px; height: 68px; padding: 0 14px; flex-shrink: 0; white-space: nowrap; }
-.nav-brand-logo { width: 52px; height: 52px; border-radius: 8px; object-fit: contain; flex-shrink: 0; background: #fff; padding: 4px; }
+.nav-brand-logo { width: 52px; height: 52px; border-radius: 8px; object-fit: contain; flex-shrink: 0; background: transparent; padding: 0; mix-blend-mode: screen; }
 .nav-brand-rule { width: 1px; height: 26px; background: var(--sidebar-border); flex-shrink: 0; display: none; }
 .nav-brand-copy { display: none; flex-direction: column; gap: 2px; min-width: 0; }
 .nav-brand-name { font-size: 14px; font-weight: 800; letter-spacing: .02em; color: #fff; line-height: 1.1; }
