@@ -258,7 +258,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .table th, .table-wrap th { padding: 11px 14px; background: var(--bg-table-head); font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); text-align: left; white-space: nowrap; }
 .table th:first-child, .table-wrap th:first-child { border-radius: 10px 0 0 10px; }
 .table th:last-child, .table-wrap th:last-child { border-radius: 0 10px 10px 0; }
-.table td, .table-wrap td { padding: 12px 14px; font-size: 13px; color: var(--text-2); vertical-align: middle; }
+.table td, .table-wrap td { padding: 12px 14px; font-size: 13px; color: var(--text-2); vertical-align: middle; border-bottom: 1px solid var(--border-strong); }
+.table tbody tr:last-child td, .table-wrap tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover td, .table-wrap tbody tr:hover td { background: var(--bg-hover); }
 .table tbody td:first-child, .table-wrap tbody td:first-child { border-radius: 10px 0 0 10px; }
 .table tbody td:last-child, .table-wrap tbody td:last-child { border-radius: 0 10px 10px 0; }

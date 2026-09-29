@@ -70,6 +70,8 @@ export default function ComunicadosPage() {
   const [area, setArea] = useState('');
   const [mes, setMes] = useState(''); // todos os meses por defeito
   const [showMapa, setShowMapa] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const POR_PAGINA = 10;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +83,7 @@ export default function ComunicadosPage() {
       if (mes) params.set('mes', mes);
       const list = await comunicadosApi.list(params.toString());
       setItems(list);
+      setPagina(1); // reset ao primeiro filtro
     } catch { router.push('/login'); }
     setLoading(false);
   }, [search, estado, area, mes, router]);
@@ -143,7 +146,7 @@ export default function ComunicadosPage() {
             {!loading && !items.length && (
               <tr><td colSpan={11} className="cell-empty">Nenhum comunicado encontrado para os filtros selecionados</td></tr>
             )}
-            {items.map(item => {
+            {items.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA).map(item => {
               const versoes: any[] = item.versoes ?? [];
               const ultima = versoes[versoes.length - 1];
               const emails = ultima?.emailEnvios ?? [];
@@ -200,6 +203,31 @@ export default function ComunicadosPage() {
             })}
           </tbody>
         </table>
+        {items.length > POR_PAGINA && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+              {((pagina - 1) * POR_PAGINA) + 1}–{Math.min(pagina * POR_PAGINA, items.length)} de {items.length} registos
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setPagina(1)} disabled={pagina === 1} style={{ padding: '4px 8px' }}>«</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setPagina(p => p - 1)} disabled={pagina === 1} style={{ padding: '4px 10px' }}>‹</button>
+              {Array.from({ length: Math.ceil(items.length / POR_PAGINA) }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === Math.ceil(items.length / POR_PAGINA) || Math.abs(p - pagina) <= 1)
+                .reduce<(number | string)[]>((acc, p, i, arr) => {
+                  if (i > 0 && (arr[i - 1] as number) + 1 < p) acc.push('…');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) => typeof p === 'string'
+                  ? <span key={`e${i}`} style={{ padding: '4px 6px', fontSize: 12, color: 'var(--text-3)' }}>…</span>
+                  : <button key={p} className={p === pagina ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}
+                      onClick={() => setPagina(p as number)} style={{ padding: '4px 10px', minWidth: 34 }}>{p}</button>
+                )}
+              <button className="btn btn-secondary btn-sm" onClick={() => setPagina(p => p + 1)} disabled={pagina === Math.ceil(items.length / POR_PAGINA)} style={{ padding: '4px 10px' }}>›</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setPagina(Math.ceil(items.length / POR_PAGINA))} disabled={pagina === Math.ceil(items.length / POR_PAGINA)} style={{ padding: '4px 8px' }}>»</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showMapa && (

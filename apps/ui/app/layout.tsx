@@ -75,7 +75,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }, []);
 
   useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleString('pt-PT', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' UTC');
+    const tick = () => {
+      const d = new Date();
+      const base = d.toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const tz = d.toLocaleTimeString('pt-PT', { timeZoneName: 'short' }).split(' ').slice(-1)[0] ?? '';
+      setNow(`${base} ${tz}`.trim());
+    };
     tick();
     const id = setInterval(tick, 30000);
     return () => clearInterval(id);
