@@ -7,10 +7,10 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-pill: 999px;
   --shadow-sm: 0 1px 4px rgba(0,0,20,.08); --shadow-md: 0 4px 16px rgba(0,0,20,.10); --shadow-xl: 0 16px 48px rgba(0,0,20,.18);
-  --neu-raise: -5px -5px 12px rgba(255,255,255,0.88), 5px 5px 14px rgba(155,178,210,0.62);
-  --neu-raise-sm: -3px -3px 8px rgba(255,255,255,0.82), 3px 3px 8px rgba(155,178,210,0.52);
-  --neu-inset: inset -4px -4px 10px rgba(255,255,255,0.78), inset 4px 4px 12px rgba(155,178,210,0.58);
-  --neu-inset-sm: inset -2px -2px 6px rgba(255,255,255,0.72), inset 2px 2px 6px rgba(155,178,210,0.48);
+  --neu-raise: -3px -3px 8px rgba(255,255,255,0.95), 4px 4px 10px rgba(0,0,40,0.08);
+  --neu-raise-sm: -2px -2px 6px rgba(255,255,255,0.92), 3px 3px 7px rgba(0,0,40,0.07);
+  --neu-inset: inset -3px -3px 7px rgba(255,255,255,0.95), inset 3px 3px 9px rgba(0,0,40,0.08);
+  --neu-inset-sm: inset -2px -2px 5px rgba(255,255,255,0.9), inset 2px 2px 6px rgba(0,0,40,0.07);
   --z-sidebar: 100; --z-topbar: 90; --z-dropdown: 200; --z-modal: 300;
   --shell-gap: 12px;
   --topbar-bar-h: 52px;
@@ -19,8 +19,8 @@
   --content-x: calc(var(--sidebar-w) + var(--shell-gap) * 2);
 
   --atos-deep: #00005C; --atos-red: #FF5269;
-  --bg: #E8EEF8; --bg-card: #E8EEF8; --bg-muted: #DDE5F4; --bg-hover: rgba(0,73,230,.07);
-  --bg-active: rgba(0,73,230,.12); --bg-subtle: #EDF3FB; --bg-table-head: #D8E2F2;
+  --bg: #F5F7FA; --bg-card: #FFFFFF; --bg-muted: #EEF0F6; --bg-hover: rgba(0,73,230,.05);
+  --bg-active: rgba(0,73,230,.09); --bg-subtle: #FFFFFF; --bg-table-head: #F0F2F8;
   --text: #1A1D3A; --text-heading: #00005C; --text-2: #2D3066; --text-3: #5A5E8E; --text-4: #8E91B8; --meta-ink: #6E71A0;
   --accent: #0073E6; --accent-hover: #005EC9; --accent-bg: rgba(0,115,230,.08); --accent-border: rgba(0,115,230,.20);
   --btn-primary-bg: #0073E6; --btn-primary-hover: #1A85F0;

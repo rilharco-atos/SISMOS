@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 function magColor(m?: number): string {
   if (!m) return '#6366F1';
@@ -72,7 +72,7 @@ export function MapaSismos({
       const map = L.map(containerRef.current, { zoomControl: true });
       mapRef.current = map;
 
-      L.tileLayer(TILE_URL, { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+      L.tileLayer(TILE_URL, { attribution: TILE_ATTR, subdomains: 'abc', maxZoom: 19 }).addTo(map);
 
       const valid = pontos.filter(p => p.lat != null && p.lon != null);
       if (!valid.length) { map.setView([39.5, -8.0], 6); return; }
