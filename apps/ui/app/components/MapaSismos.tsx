@@ -1,8 +1,11 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const TILE_URL = 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png';
+const TILE_ATTR = '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+// Portugal Continental + Madeira + Açores
+const PT_BOUNDS: [[number, number], [number, number]] = [[28.0, -33.0], [43.5, -5.5]];
 
 function magColor(m?: number): string {
   if (!m) return '#6366F1';
@@ -72,7 +75,7 @@ export function MapaSismos({
       const map = L.map(containerRef.current, { zoomControl: true });
       mapRef.current = map;
 
-      L.tileLayer(TILE_URL, { attribution: TILE_ATTR, subdomains: 'abc', maxZoom: 19 }).addTo(map);
+      L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20 }).addTo(map);
 
       const valid = pontos.filter(p => p.lat != null && p.lon != null);
       if (!valid.length) { map.setView([39.5, -8.0], 6); return; }
@@ -109,8 +112,16 @@ export function MapaSismos({
       if (valid.length === 1) {
         map.setView([valid[0].lat, valid[0].lon], pulse ? 9 : 8);
       } else {
-        const bounds = (window as any).L.latLngBounds(valid.map(p => [p.lat, p.lon]));
-        map.fitBounds(bounds.pad(0.3), { maxZoom: 10 });
+        // Se os pontos abrangem mais de 10° de longitude (Continental + Ilhas)
+        // usa o enquadramento de Portugal para não mostrar África do Norte
+        const lons = valid.map(p => p.lon);
+        const spanLon = Math.max(...lons) - Math.min(...lons);
+        if (spanLon > 10) {
+          map.fitBounds(PT_BOUNDS, { padding: [24, 24] });
+        } else {
+          const bounds = L.latLngBounds(valid.map((p: any) => [p.lat, p.lon]));
+          map.fitBounds(bounds.pad(0.35), { maxZoom: 9 });
+        }
       }
     }
 
