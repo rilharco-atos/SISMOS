@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { comunicadosApi, abrirPdf, systemApi } from './lib/api';
+import { MapaSismos } from './components/MapaSismos';
 
 const COMPONENTES: Record<string, string> = { ftp: 'leitura de XML (FTP)', envio: 'envio de email/SMS', website: 'publicação no website', backup: 'backups' };
 
@@ -76,6 +77,7 @@ export default function DashboardPage() {
   const [area, setArea] = useState('');
   const [mes, setMes] = useState(meses[0].value);
   const [saude, setSaude] = useState<any>(null);
+  const [showMapa, setShowMapa] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +112,10 @@ export default function DashboardPage() {
           <p className="page-sub">Comunicados sismológicos — Centro de Operações IPMA</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowMapa(true)} disabled={!items.some((i: any) => i.lat != null)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+            Ver Mapa
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => exportarCsv(items)} disabled={!items.length}>Exportar CSV</button>
         </div>
       </div>
@@ -257,6 +263,42 @@ export default function DashboardPage() {
           </tbody>
         </table>
       </div>
+
+      {showMapa && (
+        <div className="modal-backdrop" onClick={() => setShowMapa(false)}>
+          <div className="modal" style={{ width: 'min(860px,96vw)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+              <strong style={{ fontSize: 15 }}>Mapa de Sismos</strong>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 4 }}>
+                {items.filter((i: any) => i.lat != null).length} eventos com localização
+              </span>
+              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowMapa(false)}>✕</button>
+            </div>
+            <div style={{ padding: '0 0 4px' }}>
+              <MapaSismos
+                pontos={items.filter((i: any) => i.lat != null && i.lon != null).map((i: any) => ({
+                  id: i.id, referencia: i.referencia,
+                  lat: Number(i.lat), lon: Number(i.lon),
+                  magnitude: i.magnitude, local: i.local,
+                  areaName: i.areaName, titulo: i.titulo,
+                  estado: i.estado, eventDateTime: i.eventDateTime,
+                }))}
+                height={520}
+              />
+            </div>
+            <div style={{ padding: '10px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-3)' }}>Magnitude</span>
+              {[['≥ 6', '#DC2626'], ['≥ 5', '#EA580C'], ['≥ 4', '#D97706'], ['≥ 3', '#22C55E'], ['< 3', '#3B82F6']].map(([label, color]) => (
+                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-2)' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

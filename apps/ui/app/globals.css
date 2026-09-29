@@ -330,6 +330,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .env-banner--suave { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
 
 /* ── Misc ── */
+/* ── Leaflet tooltip personalizado ── */
+.leaflet-tooltip { border: none !important; box-shadow: 0 4px 16px rgba(0,0,20,.18) !important; border-radius: 8px !important; padding: 10px 14px !important; }
+.sismo-tip { font-family: 'Raleway', system-ui, sans-serif; min-width: 180px; }
+.sismo-tip-ref { font-weight: 700; font-size: 13px; color: #111; margin-bottom: 3px; }
+.sismo-tip-local { font-size: 12px; color: #555; margin-bottom: 7px; }
+.sismo-tip-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.sismo-tip-dt { color: #888; }
+.sismo-tip-area { margin-top: 4px; font-size: 11px; color: #aaa; }
+.leaflet-tooltip::before { display: none !important; }
+/* ── /Leaflet ── */
 .skeleton { background: linear-gradient(90deg, var(--bg-muted) 25%, var(--bg-subtle) 50%, var(--bg-muted) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: var(--radius-sm); }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }

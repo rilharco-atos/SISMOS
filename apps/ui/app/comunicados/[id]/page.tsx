@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { comunicadosApi, deliveryApi, abrirPdf } from '../../lib/api';
+import { MapaSismos } from '../../components/MapaSismos';
 
 const ESTADO_LABELS: Record<string, string> = {
   RASCUNHO: 'Rascunho', PENDENTE: 'Pendente', APROVADO: 'Ativo',
@@ -125,6 +126,21 @@ export default function ComunicadoPage() {
               <div className="card-title">Texto</div>
               <div style={{ fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{item.texto}</div>
             </div>
+            {item.lat != null && item.lon != null && (
+              <div className="card" style={{ gridColumn: '1 / -1', padding: 0, overflow: 'hidden' }}>
+                <div className="card-title" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                  Localização do Epicentro
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>
+                    {Number(item.lat).toFixed(4)}°N · {Number(item.lon).toFixed(4)}°W
+                  </span>
+                </div>
+                <MapaSismos
+                  pontos={[{ referencia: item.referencia, lat: Number(item.lat), lon: Number(item.lon), magnitude: item.magnitude, local: item.local, titulo: item.titulo, eventDateTime: item.eventDateTime }]}
+                  height={320}
+                  pulse
+                />
+              </div>
+            )}
             <div className="card" style={{ gridColumn: '1 / -1' }}>
               <div className="card-title">Website IPMA
                 <span style={{ marginLeft: 'auto' }} className={`badge ${WEBSITE_BADGE[item.websiteEstado] ?? ''}`}>{WEBSITE_LABEL[item.websiteEstado] ?? item.websiteEstado}</span>
