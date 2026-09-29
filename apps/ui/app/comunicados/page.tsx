@@ -104,7 +104,6 @@ export default function ComunicadosPage() {
             Ver Mapa
           </button>
           <button className="btn btn-secondary btn-sm" onClick={() => exportarCsv(items)} disabled={!items.length}>Exportar CSV</button>
-          <button className="btn btn-primary btn-sm" onClick={() => router.push('/comunicados/novo')}>+ Novo</button>
         </div>
       </div>
 

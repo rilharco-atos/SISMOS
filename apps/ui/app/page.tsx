@@ -68,40 +68,28 @@ function exportarCsv(items: any[]) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const meses = useMemo(() => ultimosMeses(12), []);
   const [kpis, setKpis] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [estado, setEstado] = useState('');
-  const [area, setArea] = useState('');
-  const [mes, setMes] = useState(meses[0].value);
   const [saude, setSaude] = useState<any>(null);
   const [showMapa, setShowMapa] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (estado) params.set('estado', estado);
-      if (area) params.set('areaName', area);
-      if (mes) params.set('mes', mes);
-      const [kpiData, list, h] = await Promise.all([comunicadosApi.kpis(), comunicadosApi.list(params.toString()), systemApi.getHealth().catch(() => null)]);
+      const [kpiData, list, h] = await Promise.all([comunicadosApi.kpis(), comunicadosApi.list(''), systemApi.getHealth().catch(() => null)]);
       setKpis(kpiData); setItems(list); setSaude(h);
     } catch { router.push('/login'); }
     setLoading(false);
-  }, [search, estado, area, mes, router]);
+  }, [router]);
 
-  useEffect(() => {
-    const t = setTimeout(load, search ? 300 : 0);
-    return () => clearTimeout(t);
-  }, [load, search]);
+  useEffect(() => { load(); }, [load]);
 
   const mesAtualCurto = MESES[new Date().getUTCMonth()];
   const mesAnteriorCurto = MESES[(new Date().getUTCMonth() + 11) % 12];
   const delta = kpis ? kpis.mesAtual - kpis.mesAnterior : 0;
   const v = (x: any) => (loading && !kpis ? '…' : x);
+  const recentes = items.slice(0, 5);
 
   return (
     <>
@@ -169,28 +157,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="filter-bar">
-        <div className="search">
-          <Svg><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></Svg>
-          <input className="input" type="search" placeholder="Pesquisar referência, título..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <select className="select" value={estado} onChange={e => setEstado(e.target.value)}>
-          <option value="">Todos os estados</option>
-          {Object.entries(ESTADO_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-        <select className="select" value={area} onChange={e => setArea(e.target.value)}>
-          <option value="">Todas as áreas</option>
-          <option value="Continente">Continente</option>
-          <option value="Açores">Açores</option>
-          <option value="Madeira">Madeira</option>
-        </select>
-        <select className="select" value={mes} onChange={e => setMes(e.target.value)}>
-          {meses.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          <option value="">Todos os meses</option>
-        </select>
-      </div>
-
       <div className="table-card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px 4px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-3)' }}>Comunicados recentes</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => router.push('/comunicados')} style={{ fontSize: 12 }}>
+            Ver todos →
+          </button>
+        </div>
         <table className="table">
           <thead>
             <tr>
@@ -199,13 +172,13 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && !items.length && Array.from({ length: 4 }).map((_, i) => (
+            {loading && !recentes.length && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>{Array.from({ length: 11 }).map((__, j) => <td key={j}><div className="skeleton" style={{ height: 14 }} /></td>)}</tr>
             ))}
-            {!loading && !items.length && (
-              <tr><td colSpan={11} className="cell-empty">Nenhum comunicado encontrado para os filtros selecionados</td></tr>
+            {!loading && !recentes.length && (
+              <tr><td colSpan={11} className="cell-empty">Sem comunicados recentes</td></tr>
             )}
-            {items.map(item => {
+            {recentes.map(item => {
               const versoes: any[] = item.versoes ?? [];
               const ultima = versoes[versoes.length - 1];
               const emails = ultima?.emailEnvios ?? [];
