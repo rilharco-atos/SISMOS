@@ -86,10 +86,24 @@ export function MapaSismos({
       valid.forEach(p => {
         const mag = p.magnitude != null ? Number(p.magnitude) : undefined;
         const color = magColor(mag);
-        const r = Math.max(5, Math.min(12, (mag || 3) * 2.2));
+        // Raio em metros — cresce automaticamente com o zoom
+        const radM = mag == null ? 6000
+          : mag >= 6 ? 28000
+          : mag >= 5 ? 18000
+          : mag >= 4 ? 12000
+          : mag >= 3 ? 8000
+          : 5000;
 
-        L.circleMarker([p.lat, p.lon], {
-          radius: r, fillColor: color,
+        if (pulse) {
+          // Anéis de propagação (página de detalhe)
+          [radM * 2.5, radM * 1.4].forEach((rad, i) => L.circle([p.lat, p.lon], {
+            radius: rad, fillColor: color, color: color,
+            weight: 1, opacity: 0.22 - i * 0.07, fillOpacity: 0.04,
+          }).addTo(map));
+        }
+
+        L.circle([p.lat, p.lon], {
+          radius: radM, fillColor: color,
           color: '#fff', weight: 1.5, opacity: 1, fillOpacity: 0.85,
         }).bindTooltip(
           `<div class="sismo-tip">` +
@@ -101,15 +115,8 @@ export function MapaSismos({
           `</div>` +
           (p.areaName ? `<div class="sismo-tip-area">${p.areaName}</div>` : '') +
           `</div>`,
-          { permanent: false, direction: 'top', offset: [0, -r - 4] }
+          { permanent: false, direction: 'top' }
         ).addTo(map);
-
-        if (pulse) {
-          [30000, 12000].forEach((rad, i) => L.circle([p.lat, p.lon], {
-            radius: rad, fillColor: color, color: color,
-            weight: 1.5 - i * 0.5, opacity: 0.35 - i * 0.1, fillOpacity: 0.07 - i * 0.02,
-          }).addTo(map));
-        }
       });
 
       if (valid.length === 1) {
