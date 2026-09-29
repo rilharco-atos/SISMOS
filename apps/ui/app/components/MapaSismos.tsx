@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-const TILE_URL = 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+// Esri Light Gray Canvas — gratuito, sem API key
+const TILE_BASE = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+const TILE_LABELS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+const TILE_ATTR = 'Tiles &copy; <a href="https://www.esri.com">Esri</a> &mdash; Esri, DeLorme, NAVTEQ';
 
 // Portugal Continental + Madeira + Açores
 const PT_BOUNDS: [[number, number], [number, number]] = [[28.0, -33.0], [43.5, -5.5]];
@@ -75,7 +77,8 @@ export function MapaSismos({
       const map = L.map(containerRef.current, { zoomControl: true });
       mapRef.current = map;
 
-      L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20 }).addTo(map);
+      L.tileLayer(TILE_BASE, { attribution: TILE_ATTR, maxZoom: 16 }).addTo(map);
+      L.tileLayer(TILE_LABELS, { maxZoom: 16, opacity: 1 }).addTo(map);
 
       const valid = pontos.filter(p => p.lat != null && p.lon != null);
       if (!valid.length) { map.setView([39.5, -8.0], 6); return; }
@@ -83,11 +86,11 @@ export function MapaSismos({
       valid.forEach(p => {
         const mag = p.magnitude != null ? Number(p.magnitude) : undefined;
         const color = magColor(mag);
-        const r = Math.max(7, Math.min(22, (mag || 3) * 4));
+        const r = Math.max(5, Math.min(12, (mag || 3) * 2.2));
 
         L.circleMarker([p.lat, p.lon], {
           radius: r, fillColor: color,
-          color: '#fff', weight: 2.5, opacity: 1, fillOpacity: 0.88,
+          color: '#fff', weight: 1.5, opacity: 1, fillOpacity: 0.85,
         }).bindTooltip(
           `<div class="sismo-tip">` +
           `<div class="sismo-tip-ref">${p.referencia ?? ''}</div>` +
