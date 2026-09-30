@@ -283,7 +283,7 @@ export default function BackofficePage() {
                 <div className="form-group"><label className="form-label">Email remetente</label><input className="form-control" value={config.smtpFrom ?? ''} onChange={e => setConfig((c: any) => ({ ...c, smtpFrom: e.target.value }))} placeholder="sismos@ipma.pt" /></div>
                 <div className="form-group"><label className="form-label">Nome do remetente</label><input className="form-control" value={config.emailRemetente ?? ''} onChange={e => setConfig((c: any) => ({ ...c, emailRemetente: e.target.value }))} placeholder="IPMA — Serviço de Sismologia" /></div>
               </div>
-              <div className="form-hint">Porta 465 usa TLS direto; 587 usa STARTTLS. Com o host vazio, o sistema usa as variáveis SMTP_* do ambiente.</div>
+              <div className="form-hint">Porta 465 usa TLS direto; 587 usa STARTTLS. Com o host vazio, o sistema usa as variáveis SMTP_* do ambiente. Guarde antes de testar.</div>
               <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
                 <button className="btn btn-secondary btn-sm" disabled={teste.smtp?.aCorrer} onClick={() => testar('smtp')}>{teste.smtp?.aCorrer ? 'A testar…' : 'Testar Ligação'}</button>
               </div>
