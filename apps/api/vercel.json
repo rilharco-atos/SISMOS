@@ -1,5 +1,0 @@
-{
-  "installCommand": "npm ci",
-  "buildCommand": "npm run vercel-build",
-  "routes": [{ "src": "/(.*)", "dest": "/api/index" }]
-}
