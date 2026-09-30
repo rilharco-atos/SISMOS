@@ -15,7 +15,9 @@ export class UpdateConfigDto {
   @IsOptional() @IsString() @MaxLength(255) smtpUser?: string;
   @IsOptional() @IsString() @MaxLength(255) smtpPassword?: string;
   @IsOptional() @IsString() @MaxLength(255) smtpFrom?: string;
-  @IsOptional() @IsString() @MaxLength(11) smsSender?: string;
+  // 11 é o limite dos remetentes alfanuméricos (o "IPMA" do SMSExpress MEO),
+  // mas o remetente também pode ser um número E.164, com o "+" e até 15 dígitos.
+  @IsOptional() @IsString() @MaxLength(16) smsSender?: string;
   @IsOptional() @IsIn(SMS_MODES as unknown as string[]) smsMode?: string;
   @IsOptional() @IsBoolean() envioAutomatico?: boolean;
   @IsOptional() @IsString() @MaxLength(255) emailRemetente?: string;
