@@ -1,13 +1,6 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm ci",
   "buildCommand": "npm run vercel-build",
   "regions": ["fra1"],
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 60,
-      "includeFiles": "{dist/**,assets/**,node_modules/.prisma/client/**}"
-    }
-  },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }
