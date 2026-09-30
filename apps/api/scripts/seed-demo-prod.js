@@ -237,6 +237,11 @@ Instituto Português do Mar e da Atmosfera, I.P. — Serviço de Sismologia`,
 // ---------------------------------------------------------------------------
 // Eventos DEMO-2026 (simplificados, compatíveis com o seed de desenvolvimento)
 // ---------------------------------------------------------------------------
+
+// Comunicado tem @@unique([ano, numeroAno]) e os SISMOS acima já ocupam
+// numeroAno 1–6 em 2026. Os DEMO são gravados a partir de 101 para não colidir.
+const DEMO_NUMERO_BASE = 100;
+
 const DEMOS = [
   { referencia: 'DEMO-2026-001', ano: 2026, numeroAno: 1, templateId: '0001', estado: 'ENVIADO', primeiraPagina: true,
     titulo: 'Sismo sentido na Região dos Açores', texto: 'Ocorreu um sismo de magnitude 5.8 ML com epicentro na região dos Açores (ilha do Faial). O sismo foi sentido em várias ilhas do grupo Central.',
@@ -462,46 +467,50 @@ async function main() {
       console.log(`[seed-demo] Já existe: ${d.referencia}`);
       continue;
     }
-    const comunicado = await prisma.comunicado.create({
-      data: {
-        referencia: d.referencia,
-        ano: d.ano,
-        numeroAno: d.numeroAno,
-        origem: 'MANUAL',
-        templateId: d.templateId,
-        estado: d.estado,
-        primeiraPagina: d.primeiraPagina,
-        ativo: true,
-        titulo: d.titulo,
-        texto: d.texto,
-        local: d.local,
-        areaName: d.areaName,
-        eventDateTime: new Date(d.eventDateTime),
-        lat: d.lat,
-        lon: d.lon,
-        depth: d.depth,
-        magnitude: d.magnitude,
-        intmax: d.intmax || null,
-        websiteInicio: d.websiteInicio ? new Date(d.websiteInicio) : null,
-        websiteFim: d.websiteFim ? new Date(d.websiteFim) : null,
-        smsListas: [],
-        emailListas: [],
-        criadoPorId: admin.id,
-        criadoEm: new Date(d.eventDateTime),
-        atualizadoEm: new Date(d.eventDateTime),
-      },
-    });
-    await prisma.versao.create({
-      data: {
-        comunicadoId: comunicado.id,
-        numero: 1,
-        titulo: d.titulo,
-        texto: d.texto,
-        criadoPorId: admin.id,
-        criadoEm: new Date(d.eventDateTime),
-      },
-    });
-    console.log(`[seed-demo] Demo criado: ${d.referencia}`);
+    try {
+      const comunicado = await prisma.comunicado.create({
+        data: {
+          referencia: d.referencia,
+          ano: d.ano,
+          numeroAno: DEMO_NUMERO_BASE + d.numeroAno,
+          origem: 'MANUAL',
+          templateId: d.templateId,
+          estado: d.estado,
+          primeiraPagina: d.primeiraPagina,
+          ativo: true,
+          titulo: d.titulo,
+          texto: d.texto,
+          local: d.local,
+          areaName: d.areaName,
+          eventDateTime: new Date(d.eventDateTime),
+          lat: d.lat,
+          lon: d.lon,
+          depth: d.depth,
+          magnitude: d.magnitude,
+          intmax: d.intmax || null,
+          websiteInicio: d.websiteInicio ? new Date(d.websiteInicio) : null,
+          websiteFim: d.websiteFim ? new Date(d.websiteFim) : null,
+          smsListas: [],
+          emailListas: [],
+          criadoPorId: admin.id,
+          criadoEm: new Date(d.eventDateTime),
+          atualizadoEm: new Date(d.eventDateTime),
+        },
+      });
+      await prisma.versao.create({
+        data: {
+          comunicadoId: comunicado.id,
+          numero: 1,
+          titulo: d.titulo,
+          texto: d.texto,
+          criadoPorId: admin.id,
+          criadoEm: new Date(d.eventDateTime),
+        },
+      });
+      console.log(`[seed-demo] Demo criado: ${d.referencia}`);
+    } catch (e) {
+      console.error(`[seed-demo] Falhou ${d.referencia}: ${e.message}`);
+    }
   }
 
   // 6. Sequência de referências
