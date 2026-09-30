@@ -58,7 +58,8 @@ function linhasEvento(f: Form): [string, string][] {
 
 // ─── Template placeholder editor ────────────────────────────────────────────
 
-const PH_RE = /\[[^\]\n]*\]|\{m\.m\]/g;
+// Detecta [marcador] e |---- TEXTO LIVRE ----|  (formatos IPMA)
+const PH_RE = /\[[^\]\n]*\]|\{m\.m\]|\|[-\s]*[^|\n]+?[-\s]*\|/g;
 type Seg = { t: 'text'; v: string } | { t: 'ph'; marker: string };
 
 function parseSegs(texto: string): Seg[] {
@@ -493,7 +494,7 @@ function NovoComunicado() {
                   <div className="field"><label className="field-label">Título</label><input className="input" value={form.titulo} onChange={e => set('titulo', e.target.value)} placeholder="Sismo de magnitude 2.6 — a cerca de 30 km a Sudoeste de Faro" /></div>
                   <div className="field">
                     <label className="field-label">Texto</label>
-                    {form.templateId !== '0000' && !base && (rawTemplate || form.texto) ? (
+                    {form.templateId !== '0000' && (rawTemplate || form.texto) ? (
                       <TemplateEditor
                         rawTemplate={rawTemplate || form.texto}
                         phValues={phValues}
@@ -503,7 +504,7 @@ function NovoComunicado() {
                       <textarea className="textarea" rows={14} value={form.texto} onChange={e => { set('texto', e.target.value); setTextoEditado(true); }} />
                     )}
                     <span className="form-hint">
-                      {form.templateId !== '0000' && !base
+                      {form.templateId !== '0000'
                         ? 'Preencha os campos assinalados a verde. O restante texto é gerado pelo template e não pode ser alterado directamente.'
                         : 'Texto oficial do template preenchido com os dados do evento. Os marcadores entre [ ] que ficarem por preencher devem ser completados.'}
                     </span>
