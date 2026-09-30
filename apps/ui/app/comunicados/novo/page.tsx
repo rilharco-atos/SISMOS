@@ -56,6 +56,74 @@ function linhasEvento(f: Form): [string, string][] {
   return out;
 }
 
+// ─── Template placeholder editor ────────────────────────────────────────────
+
+const PH_RE = /\[[^\]\n]*\]|\{m\.m\]/g;
+type Seg = { t: 'text'; v: string } | { t: 'ph'; marker: string };
+
+function parseSegs(texto: string): Seg[] {
+  const segs: Seg[] = [];
+  const re = new RegExp(PH_RE.source, 'g');
+  let last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(texto)) !== null) {
+    if (m.index > last) segs.push({ t: 'text', v: texto.slice(last, m.index) });
+    segs.push({ t: 'ph', marker: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < texto.length) segs.push({ t: 'text', v: texto.slice(last) });
+  return segs;
+}
+
+function phLabel(marker: string): string {
+  return marker.replace(/^[\[{]|[\]}]$/g, '').replace(/^-+\s*|\s*-+$/g, '').trim();
+}
+
+function TemplateEditor({ rawTemplate, phValues, onChange }: {
+  rawTemplate: string;
+  phValues: Record<string, string>;
+  onChange: (marker: string, value: string) => void;
+}) {
+  const segs = parseSegs(rawTemplate);
+  const hasPh = segs.some(s => s.t === 'ph');
+  return (
+    <div style={{
+      whiteSpace: 'pre-wrap', lineHeight: 1.85, padding: '12px 14px',
+      background: 'var(--bg-muted)', borderRadius: 8, border: '1px solid var(--border)',
+      fontSize: 13, color: 'var(--text-1)', minHeight: 180, wordBreak: 'break-word',
+    }}>
+      {hasPh
+        ? segs.map((s, i) => {
+            if (s.t === 'text') return <span key={i}>{s.v}</span>;
+            const label = phLabel(s.marker);
+            const w = Math.min(Math.max(label.length * 8 + 28, 64), 300);
+            const filled = !!(phValues[s.marker]);
+            return (
+              <input
+                key={`${s.marker}-${i}`}
+                type="text"
+                value={phValues[s.marker] ?? ''}
+                placeholder={label}
+                onChange={e => onChange(s.marker, e.target.value)}
+                title={s.marker}
+                style={{
+                  display: 'inline-block', width: w,
+                  background: filled ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.18)',
+                  border: `1.5px solid ${filled ? '#86efac' : 'var(--accent,#22c55e)'}`,
+                  borderRadius: 4, padding: '1px 6px', fontSize: '0.88em',
+                  fontFamily: 'var(--font-mono)', color: filled ? 'var(--text-1)' : 'var(--accent)',
+                  outline: 'none', verticalAlign: 'text-bottom', lineHeight: '1.5', cursor: 'text',
+                }}
+              />
+            );
+          })
+        : rawTemplate
+      }
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 function NovoComunicado() {
   const router = useRouter();
   const params = useSearchParams();
@@ -64,6 +132,8 @@ function NovoComunicado() {
   const [templates, setTemplates] = useState<{ id: string; label: string }[]>([]);
   const [form, setForm] = useState<Form>(FORM_VAZIO);
   const [textoEditado, setTextoEditado] = useState(false);
+  const [rawTemplate, setRawTemplate] = useState('');
+  const [phValues, setPhValues] = useState<Record<string, string>>({});
   const [base, setBase] = useState<any>(null);
   const [xml, setXml] = useState<{ fonte: string; nome: string; origem: any } | null>(null);
   const [correspondente, setCorrespondente] = useState<any>(null);
@@ -95,6 +165,7 @@ function NovoComunicado() {
         emailListas: c.emailListas ?? [], smsListas: c.smsListas ?? [],
       });
       setTextoEditado(true);
+      setRawTemplate(c.texto);
     }).catch(() => setErro('Comunicado de origem não encontrado'));
   }, [versaoDe]);
 
@@ -106,7 +177,7 @@ function NovoComunicado() {
         templateId: form.templateId, areaName: form.areaName, eventDateTime: doInputUtc(form.eventDateTime),
         magnitude: numero(form.magnitude), local: form.local || undefined, intmax: form.intmax || undefined,
         regiaoIntmax: form.regiaoIntmax || undefined, infoMacrossAdicional: form.infoMacrossAdicional || undefined,
-      }).then(r => setForm(f => ({ ...f, texto: r.texto }))).catch(() => undefined);
+      }).then(r => { setForm(f => ({ ...f, texto: r.texto })); setRawTemplate(r.texto); setPhValues({}); }).catch(() => undefined);
     }, 350);
     return () => clearTimeout(t);
   }, [textoEditado, passo, form.templateId, form.areaName, form.eventDateTime, form.magnitude, form.local, form.intmax, form.regiaoIntmax, form.infoMacrossAdicional]);
@@ -115,6 +186,16 @@ function NovoComunicado() {
 
   function toggleLista(tipo: 'emailListas' | 'smsListas', l: string) {
     setForm(f => ({ ...f, [tipo]: f[tipo].includes(l) ? f[tipo].filter(x => x !== l) : [...f[tipo], l] }));
+  }
+
+  function handlePlaceholderChange(marker: string, value: string) {
+    const newPh = { ...phValues, [marker]: value };
+    setPhValues(newPh);
+    const tpl = rawTemplate || form.texto;
+    const segs = parseSegs(tpl);
+    const newTexto = segs.map(s => s.t === 'text' ? s.v : (newPh[s.marker] || s.marker)).join('');
+    setForm(f => ({ ...f, texto: newTexto }));
+    setTextoEditado(true);
   }
 
   async function carregarXml(file?: File | null) {
@@ -133,6 +214,7 @@ function NovoComunicado() {
         emailListas: d.emailListas, smsListas: d.smsListas,
       }));
       setTextoEditado(false);
+      setPhValues({});
       setXml({ fonte, nome: file.name, origem: r.origem });
       setCorrespondente(!base && r.correspondente ? r.correspondente : null);
       setPasso(2);
@@ -355,14 +437,26 @@ function NovoComunicado() {
               <div className="card">
                 <div className="card-head">
                   <h2 className="card-title">Texto do Comunicado</h2>
-                  {textoEditado && <button className="btn btn-ghost btn-sm" onClick={() => setTextoEditado(false)}>Repor texto do template</button>}
+                  {textoEditado && <button className="btn btn-ghost btn-sm" onClick={() => { setTextoEditado(false); setPhValues({}); }}>Repor texto do template</button>}
                 </div>
                 <div className="stack" style={{ gap: 12 }}>
                   <div className="field"><label className="field-label">Título</label><input className="input" value={form.titulo} onChange={e => set('titulo', e.target.value)} placeholder="Sismo de magnitude 2.6 — a cerca de 30 km a Sudoeste de Faro" /></div>
                   <div className="field">
                     <label className="field-label">Texto</label>
-                    <textarea className="textarea" rows={14} value={form.texto} onChange={e => { set('texto', e.target.value); setTextoEditado(true); }} />
-                    <span className="form-hint">Texto oficial do template preenchido com os dados do evento. Os marcadores entre [ ] que ficarem por preencher devem ser completados.</span>
+                    {form.templateId !== '0000' && !base && (rawTemplate || form.texto) ? (
+                      <TemplateEditor
+                        rawTemplate={rawTemplate || form.texto}
+                        phValues={phValues}
+                        onChange={handlePlaceholderChange}
+                      />
+                    ) : (
+                      <textarea className="textarea" rows={14} value={form.texto} onChange={e => { set('texto', e.target.value); setTextoEditado(true); }} />
+                    )}
+                    <span className="form-hint">
+                      {form.templateId !== '0000' && !base
+                        ? 'Preencha os campos assinalados a verde. O restante texto é gerado pelo template e não pode ser alterado directamente.'
+                        : 'Texto oficial do template preenchido com os dados do evento. Os marcadores entre [ ] que ficarem por preencher devem ser completados.'}
+                    </span>
                   </div>
                   <div className="field">
                     <label className="field-label">Imagem (mapa de intensidades)</label>

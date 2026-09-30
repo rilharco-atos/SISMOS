@@ -124,6 +124,7 @@ async function seedDemo() {
         intmax: intmax ?? null,
         websiteInicio: websiteInicio ? new Date(websiteInicio) : null,
         websiteFim: websiteFim ? new Date(websiteFim) : null,
+        criadoPorId: 'system',
         criadoEm: new Date(eventDateTime),
         atualizadoEm: new Date(eventDateTime),
       },
