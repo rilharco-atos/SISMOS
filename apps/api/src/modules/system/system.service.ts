@@ -81,15 +81,23 @@ export class SystemService {
     const smtp = await this.settings.smtp();
     const inicio = Date.now();
 
-    // Com chave de API o envio é por HTTPS e não há ligação SMTP para verificar:
-    // valida-se a chave contra a API em vez do servidor de correio.
+    // Com chave de API o envio é por HTTPS e não há ligação SMTP para verificar.
+    // Sonda-se o endpoint de envio com um corpo vazio: separa autenticação de
+    // payload, porque 401/403 é chave recusada e 422 é chave aceite com campos
+    // em falta. Não serve consultar /domains — as chaves de envio do Resend,
+    // que são as mais comuns, não têm permissão para esse endpoint e dão 401.
     if (smtp.apiKey) {
       try {
-        const res = await fetch('https://api.resend.com/domains', {
-          headers: { Authorization: `Bearer ${smtp.apiKey}` },
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${smtp.apiKey}`, 'Content-Type': 'application/json' },
+          body: '{}',
           signal: AbortSignal.timeout(10000),
         });
-        if (!res.ok) throw new Error(`a API respondeu ${res.status}`);
+        if (res.status === 401 || res.status === 403) {
+          const corpo: any = await res.json().catch(() => null);
+          throw new Error(corpo?.message ?? `chave recusada (${res.status})`);
+        }
         return this.resultadoTeste(userId, 'SMTP', true, smtp.origem, 'Envio por HTTPS (Resend) — chave aceite', inicio);
       } catch (e: any) {
         return this.resultadoTeste(userId, 'SMTP', false, smtp.origem, `Envio por HTTPS (Resend): ${e.message}`, inicio);
