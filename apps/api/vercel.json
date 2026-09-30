@@ -1,6 +1,5 @@
 {
   "installCommand": "npm ci",
   "buildCommand": "npm run vercel-build",
-  "regions": ["fra1"],
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "routes": [{ "src": "/(.*)", "dest": "/api/index" }]
 }
