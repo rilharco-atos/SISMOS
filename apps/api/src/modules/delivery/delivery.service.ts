@@ -18,7 +18,7 @@ import { SmsSettings, SmtpSettings } from '../settings/settings.resolver';
 import { MetricsService, M } from '../observability/metrics.service';
 import { WebsiteService } from '../website/website.service';
 import { PREFIXO_ASSUNTO_TESTE, chaveEmail, chaveTelefone, elegivel } from './politica-envio';
-import { TransporteEmail, TransporteResend, embutirImagens } from './email-http';
+import { TransporteEmail, TransporteResend, TransporteSendgrid, embutirImagens } from './email-http';
 
 interface Resultado { enviados: number; falhas: number; ignorados: number; erro?: string }
 type Modo = 'test' | 'production';
@@ -102,7 +102,8 @@ export class DeliveryService {
    * definida o envio vai por HTTPS; caso contrário usa SMTP (backoffice ou .env).
    */
   criarTransporter(smtp: SmtpSettings): TransporteEmail {
-    if (smtp.apiKey) return new TransporteResend(this.http, smtp.apiKey);
+    if (smtp.apiProvedor === 'sendgrid') return new TransporteSendgrid(this.http, smtp.apiKey);
+    if (smtp.apiProvedor === 'resend') return new TransporteResend(this.http, smtp.apiKey);
     return nodemailer.createTransport({
       host: smtp.host, port: smtp.port, secure: smtp.secure,
       auth: smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,

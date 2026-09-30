@@ -27,6 +27,8 @@ export interface SmtpSettings {
    * Fica vazia na instalação do IPMA, onde o SMTP interno funciona.
    */
   apiKey: string;
+  /** Fornecedor da chave acima. "nenhum" quando não há chave e o envio é por SMTP. */
+  apiProvedor: 'nenhum' | 'resend' | 'sendgrid';
 }
 
 export interface SmsSettings {
@@ -91,14 +93,20 @@ export function formatarRemetente(email: string, nome?: string | null): string {
 
 /** SMTP: mesma regra do FTP, decidida pelo host SMTP. */
 export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpSettings {
-  const apiKey = env('RESEND_API_KEY') ?? '';
+  // O SendGrid tem precedência: basta verificar um endereço de remetente para
+  // enviar a qualquer destinatário, enquanto o Resend sem domínio verificado só
+  // entrega ao dono da conta.
+  const sendgrid = env('SENDGRID_API_KEY') ?? '';
+  const resend = env('RESEND_API_KEY') ?? '';
+  const apiKey = sendgrid || resend;
+  const apiProvedor: SmtpSettings['apiProvedor'] = sendgrid ? 'sendgrid' : resend ? 'resend' : 'nenhum';
   if (cfg && preenchido(cfg.smtpHost)) {
     const port = Number(cfg.smtpPort) || 587;
     return {
       origem: 'backoffice', host: cfg.smtpHost!.trim(), port, secure: port === 465,
       user: cfg.smtpUser ?? '', password: cfg.smtpPassword ?? '',
       from: formatarRemetente(cfg.smtpFrom || cfg.smtpUser || 'sismos@ipma.pt', cfg.emailRemetente),
-      apiKey,
+      apiKey, apiProvedor,
     };
   }
   const port = Number(env('SMTP_PORT')) || 587;
@@ -106,7 +114,7 @@ export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpS
     origem: 'env', host: env('SMTP_HOST') ?? '', port, secure: port === 465,
     user: env('SMTP_USER') ?? '', password: env('SMTP_PASSWORD') ?? '',
     from: env('SMTP_FROM') || env('SMTP_USER') || 'sismos@ipma.pt',
-    apiKey,
+    apiKey, apiProvedor,
   };
 }
 

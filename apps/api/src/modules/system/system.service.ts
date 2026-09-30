@@ -86,9 +86,12 @@ export class SystemService {
     // payload, porque 401/403 é chave recusada e 422 é chave aceite com campos
     // em falta. Não serve consultar /domains — as chaves de envio do Resend,
     // que são as mais comuns, não têm permissão para esse endpoint e dão 401.
-    if (smtp.apiKey) {
+    if (smtp.apiProvedor !== 'nenhum') {
+      const sendgrid = smtp.apiProvedor === 'sendgrid';
+      const nome = sendgrid ? 'SendGrid' : 'Resend';
+      const url = sendgrid ? 'https://api.sendgrid.com/v3/mail/send' : 'https://api.resend.com/emails';
       try {
-        const res = await fetch('https://api.resend.com/emails', {
+        const res = await fetch(url, {
           method: 'POST',
           headers: { Authorization: `Bearer ${smtp.apiKey}`, 'Content-Type': 'application/json' },
           body: '{}',
@@ -98,9 +101,9 @@ export class SystemService {
           const corpo: any = await res.json().catch(() => null);
           throw new Error(corpo?.message ?? `chave recusada (${res.status})`);
         }
-        return this.resultadoTeste(userId, 'SMTP', true, smtp.origem, 'Envio por HTTPS (Resend) — chave aceite', inicio);
+        return this.resultadoTeste(userId, 'SMTP', true, smtp.origem, `Envio por HTTPS (${nome}) — chave aceite`, inicio);
       } catch (e: any) {
-        return this.resultadoTeste(userId, 'SMTP', false, smtp.origem, `Envio por HTTPS (Resend): ${e.message}`, inicio);
+        return this.resultadoTeste(userId, 'SMTP', false, smtp.origem, `Envio por HTTPS (${nome}): ${e.message}`, inicio);
       }
     }
 
