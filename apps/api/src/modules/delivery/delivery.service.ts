@@ -208,8 +208,11 @@ export class DeliveryService {
     if (falhasEmail + falhasSms > 0) {
       this.metrics.erro('envio', `${falhasEmail + falhasSms} falha(s) no envio de ${referencia}`, detalhe);
       this.logger.error(JSON.stringify({ msg: 'ALERTA: envio com falhas', ...detalhe }));
-    } else {
-      this.metrics.sucesso('envio', detalhe);
+      return;
     }
+    this.metrics.sucesso('envio', detalhe);
+    // Sem esta linha um envio que não chega a ninguém — por exemplo quando
+    // nenhum destinatário é interno em modo de teste — não deixa rasto nenhum.
+    this.logger.log(JSON.stringify({ msg: 'Envio concluído', ...detalhe }));
   }
 }
