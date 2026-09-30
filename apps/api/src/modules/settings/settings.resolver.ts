@@ -21,6 +21,12 @@ export interface SmtpSettings {
   user: string;
   password: string;
   from: string;
+  /**
+   * Chave da API HTTP de email. Quando definida, o envio vai por HTTPS em vez
+   * de SMTP — necessário onde as portas SMTP estão bloqueadas (alojamento cloud).
+   * Fica vazia na instalação do IPMA, onde o SMTP interno funciona.
+   */
+  apiKey: string;
 }
 
 export interface SmsSettings {
@@ -78,12 +84,14 @@ export function formatarRemetente(email: string, nome?: string | null): string {
 
 /** SMTP: mesma regra do FTP, decidida pelo host SMTP. */
 export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpSettings {
+  const apiKey = env('RESEND_API_KEY') ?? '';
   if (cfg && preenchido(cfg.smtpHost)) {
     const port = Number(cfg.smtpPort) || 587;
     return {
       origem: 'backoffice', host: cfg.smtpHost!.trim(), port, secure: port === 465,
       user: cfg.smtpUser ?? '', password: cfg.smtpPassword ?? '',
       from: formatarRemetente(cfg.smtpFrom || cfg.smtpUser || 'sismos@ipma.pt', cfg.emailRemetente),
+      apiKey,
     };
   }
   const port = Number(env('SMTP_PORT')) || 587;
@@ -91,6 +99,7 @@ export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpS
     origem: 'env', host: env('SMTP_HOST') ?? '', port, secure: port === 465,
     user: env('SMTP_USER') ?? '', password: env('SMTP_PASSWORD') ?? '',
     from: env('SMTP_FROM') || env('SMTP_USER') || 'sismos@ipma.pt',
+    apiKey,
   };
 }
 

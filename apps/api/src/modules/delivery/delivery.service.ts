@@ -18,6 +18,7 @@ import { SmsSettings, SmtpSettings } from '../settings/settings.resolver';
 import { MetricsService, M } from '../observability/metrics.service';
 import { WebsiteService } from '../website/website.service';
 import { PREFIXO_ASSUNTO_TESTE, chaveEmail, chaveTelefone, elegivel } from './politica-envio';
+import { TransporteEmail, TransporteResend, embutirImagens } from './email-http';
 
 interface Resultado { enviados: number; falhas: number; ignorados: number; erro?: string }
 type Modo = 'test' | 'production';
@@ -93,15 +94,15 @@ export class DeliveryService {
     const comunicado = await this.prisma.comunicado.findUniqueOrThrow({ where: { id: comunicadoId } });
     const versao = await this.prisma.versao.findFirstOrThrow({ where: { id: versaoId, comunicadoId } });
     const email = await this.prepararEmail(await this.documentoDaVersao(comunicado, versao), versao.pdfPath, (await this.settings.sms()).modo);
-    let html = email.html;
-    for (const a of email.attachments) {
-      if (a.cid && Buffer.isBuffer(a.content)) html = html.replace(`cid:${a.cid}`, `data:${a.contentType};base64,${a.content.toString('base64')}`);
-    }
-    return html;
+    return embutirImagens(email.html, email.attachments);
   }
 
-  /** Transporte SMTP a partir da configuração efetiva (backoffice ou .env). */
-  criarTransporter(smtp: SmtpSettings) {
+  /**
+   * Transporte de email a partir da configuração efetiva. Com RESEND_API_KEY
+   * definida o envio vai por HTTPS; caso contrário usa SMTP (backoffice ou .env).
+   */
+  criarTransporter(smtp: SmtpSettings): TransporteEmail {
+    if (smtp.apiKey) return new TransporteResend(this.http, smtp.apiKey);
     return nodemailer.createTransport({
       host: smtp.host, port: smtp.port, secure: smtp.secure,
       auth: smtp.user ? { user: smtp.user, pass: smtp.password } : undefined,
@@ -145,7 +146,7 @@ export class DeliveryService {
     return { buf, mime: tipo === 'png' ? 'image/png' : 'image/jpeg', ext: tipo === 'png' ? 'png' : 'jpg' };
   }
 
-  private async enviarEmails(transporter: nodemailer.Transporter, smtp: SmtpSettings, email: Email, destinatarios: any[], modo: Modo, jaEnviados: Set<string>, simulado: boolean): Promise<Resultado> {
+  private async enviarEmails(transporter: TransporteEmail, smtp: SmtpSettings, email: Email, destinatarios: any[], modo: Modo, jaEnviados: Set<string>, simulado: boolean): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     for (const d of destinatarios) {
       const destino: string | null = d.destinatario.email;

@@ -76,11 +76,27 @@ export class SystemService {
     try { await this.prisma.$queryRaw`SELECT 1`; return true; } catch { return false; }
   }
 
-  /** Verifica a ligação e autenticação SMTP com a configuração efetiva, sem enviar mensagens. */
+  /** Verifica a ligação e autenticação com a configuração efetiva, sem enviar mensagens. */
   async testarSmtp(userId: string) {
     const smtp = await this.settings.smtp();
-    if (!smtp.host) return { ok: false, origem: smtp.origem, mensagem: 'Servidor SMTP não configurado' };
     const inicio = Date.now();
+
+    // Com chave de API o envio é por HTTPS e não há ligação SMTP para verificar:
+    // valida-se a chave contra a API em vez do servidor de correio.
+    if (smtp.apiKey) {
+      try {
+        const res = await fetch('https://api.resend.com/domains', {
+          headers: { Authorization: `Bearer ${smtp.apiKey}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) throw new Error(`a API respondeu ${res.status}`);
+        return this.resultadoTeste(userId, 'SMTP', true, smtp.origem, 'Envio por HTTPS (Resend) — chave aceite', inicio);
+      } catch (e: any) {
+        return this.resultadoTeste(userId, 'SMTP', false, smtp.origem, `Envio por HTTPS (Resend): ${e.message}`, inicio);
+      }
+    }
+
+    if (!smtp.host) return { ok: false, origem: smtp.origem, mensagem: 'Servidor SMTP não configurado' };
     try {
       await nodemailer.createTransport({
         host: smtp.host, port: smtp.port, secure: smtp.secure,
