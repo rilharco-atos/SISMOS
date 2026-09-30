@@ -263,7 +263,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .table tbody tr:hover td, .table-wrap tbody tr:hover td { background: var(--bg-hover); }
 .table tbody td:first-child, .table-wrap tbody td:first-child { border-radius: 10px 0 0 10px; }
 .table tbody td:last-child, .table-wrap tbody td:last-child { border-radius: 0 10px 10px 0; }
-.cell-primary { display: block; font-weight: 700; color: var(--text-heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+.cell-primary { display: block; font-weight: 700; color: var(--text-heading); }
 .cell-meta { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: 11px; color: var(--meta-ink); white-space: nowrap; }
 .cell-sub { display: block; margin-top: 3px; font-size: 11px; color: var(--text-4); }
 .cell-empty { text-align: center; color: var(--text-4); padding: 40px 14px !important; }
