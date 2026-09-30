@@ -3,6 +3,21 @@
 // Usa apenas dependências de produção: @prisma/client e bcrypt.
 // Idempotente: verifica existência antes de inserir.
 
+// Railway pode expor a BD como DATABASE_PRIVATE_URL ou DATABASE_PUBLIC_URL
+// em vez de DATABASE_URL. Resolver antes de criar o PrismaClient.
+if (!process.env.DATABASE_URL) {
+  const alt = process.env.DATABASE_PRIVATE_URL
+           || process.env.DATABASE_PUBLIC_URL
+           || process.env.DATABASE_URL_UNPOOLED;
+  if (alt) {
+    process.env.DATABASE_URL = alt;
+    console.log('[seed-demo] DATABASE_URL resolvido a partir de variável alternativa do Railway');
+  } else {
+    console.warn('[seed-demo] DATABASE_URL não configurado — seed ignorado (base de dados não acessível)');
+    process.exit(0);
+  }
+}
+
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const { randomBytes } = require('crypto');
@@ -220,6 +235,55 @@ Instituto Português do Mar e da Atmosfera, I.P. — Serviço de Sismologia`,
 ];
 
 // ---------------------------------------------------------------------------
+// Eventos DEMO-2026 (simplificados, compatíveis com o seed de desenvolvimento)
+// ---------------------------------------------------------------------------
+const DEMOS = [
+  { referencia: 'DEMO-2026-001', ano: 2026, numeroAno: 1, templateId: '0001', estado: 'ENVIADO', primeiraPagina: true,
+    titulo: 'Sismo sentido na Região dos Açores', texto: 'Ocorreu um sismo de magnitude 5.8 ML com epicentro na região dos Açores (ilha do Faial). O sismo foi sentido em várias ilhas do grupo Central.',
+    local: 'Faial, Açores', areaName: 'Açores', eventDateTime: '2026-09-01T14:23:00Z',
+    lat: '38.532000', lon: '-28.634000', depth: '12.00', magnitude: '5.8',
+    intmax: 'VI', websiteInicio: '2026-09-01T15:00:00Z', websiteFim: '2026-09-08T15:00:00Z' },
+  { referencia: 'DEMO-2026-002', ano: 2026, numeroAno: 2, templateId: '0001', estado: 'ENVIADO', primeiraPagina: false,
+    titulo: 'Sismo sentido no Algarve', texto: 'Registou-se um sismo de magnitude 3.8 ML com epicentro a sudoeste de Lagos, no Algarve. O evento foi sentido de forma fraca na região.',
+    local: 'Lagos, Algarve', areaName: 'Continente', eventDateTime: '2026-09-03T09:47:00Z',
+    lat: '37.084000', lon: '-8.812000', depth: '18.00', magnitude: '3.8', intmax: 'III' },
+  { referencia: 'DEMO-2026-003', ano: 2026, numeroAno: 3, templateId: '0002', estado: 'APROVADO', primeiraPagina: true,
+    titulo: 'Sismo sentido na Ilha da Madeira', texto: 'Ocorreu um sismo de magnitude 3.4 ML com epicentro a norte da ilha da Madeira. O evento foi sentido de forma moderada nos concelhos do norte.',
+    local: 'Norte da Madeira', areaName: 'Madeira', eventDateTime: '2026-09-05T22:11:00Z',
+    lat: '32.824000', lon: '-17.041000', depth: '9.00', magnitude: '3.4' },
+  { referencia: 'DEMO-2026-004', ano: 2026, numeroAno: 4, templateId: '0001', estado: 'ENVIADO', primeiraPagina: true,
+    titulo: 'Sismo sentido na Região dos Açores — Sismo de grande magnitude', texto: 'Ocorreu um sismo de magnitude 6.1 ML com epicentro na região dos Açores. O evento foi amplamente sentido em todo o arquipélago. Activada a monitorização de Alerta de Tsunami.',
+    local: 'S. Miguel, Açores', areaName: 'Açores', eventDateTime: '2026-09-07T03:58:00Z',
+    lat: '37.741000', lon: '-25.516000', depth: '8.00', magnitude: '6.1',
+    intmax: 'VII', websiteInicio: '2026-09-07T05:00:00Z', websiteFim: '2026-09-14T05:00:00Z' },
+  { referencia: 'DEMO-2026-005', ano: 2026, numeroAno: 5, templateId: '0000', estado: 'RASCUNHO', primeiraPagina: false,
+    titulo: 'Sismo sentido em Lisboa e Vale do Tejo', texto: 'Registou-se um sismo de magnitude 2.9 ML com epicentro na região da Margem Sul do Tejo. Fraca sentido na região de Lisboa.',
+    local: 'Almada, Setúbal', areaName: 'Continente', eventDateTime: '2026-09-09T16:33:00Z',
+    lat: '38.678000', lon: '-9.154000', depth: '22.00', magnitude: '2.9' },
+  { referencia: 'DEMO-2026-006', ano: 2026, numeroAno: 6, templateId: '0001', estado: 'ENVIADO', primeiraPagina: false,
+    titulo: 'Sismo sentido na Região de Évora', texto: 'Ocorreu um sismo de magnitude 3.2 ML com epicentro a norte de Évora. O evento foi sentido de forma fraca em Évora e concelhos adjacentes.',
+    local: 'Norte de Évora', areaName: 'Continente', eventDateTime: '2026-09-10T11:04:00Z',
+    lat: '38.671000', lon: '-7.903000', depth: '15.00', magnitude: '3.2', intmax: 'II' },
+  { referencia: 'DEMO-2026-007', ano: 2026, numeroAno: 7, templateId: '0001', estado: 'ENVIADO', primeiraPagina: false,
+    titulo: 'Sismo sentido no Grupo Ocidental dos Açores', texto: 'Ocorreu um sismo de magnitude 4.7 ML com epicentro a oeste das ilhas do Grupo Ocidental (Corvo e Flores). O evento foi sentido nas duas ilhas.',
+    local: 'Flores e Corvo, Açores', areaName: 'Açores', eventDateTime: '2026-09-12T07:29:00Z',
+    lat: '39.445000', lon: '-31.112000', depth: '14.00', magnitude: '4.7' },
+  { referencia: 'DEMO-2026-008', ano: 2026, numeroAno: 8, templateId: '0002', estado: 'PENDENTE', primeiraPagina: false,
+    titulo: 'Sismo sentido no Alentejo', texto: 'Registou-se um sismo de magnitude 3.6 ML com epicentro a sul de Beja. O evento foi sentido de forma fraca em Beja e concelhos do Baixo Alentejo.',
+    local: 'Sul de Beja', areaName: 'Continente', eventDateTime: '2026-09-14T20:51:00Z',
+    lat: '37.612000', lon: '-7.874000', depth: '11.00', magnitude: '3.6' },
+  { referencia: 'DEMO-2026-009', ano: 2026, numeroAno: 9, templateId: '0001', estado: 'ENVIADO', primeiraPagina: true,
+    titulo: 'Sismo sentido na Ilha do Pico — Açores', texto: 'Ocorreu um sismo de magnitude 5.1 ML com epicentro a sul da ilha do Pico. O evento foi sentido com intensidade moderada em todo o grupo central dos Açores.',
+    local: 'Pico, Açores', areaName: 'Açores', eventDateTime: '2026-09-16T17:43:00Z',
+    lat: '38.401000', lon: '-28.341000', depth: '16.00', magnitude: '5.1',
+    intmax: 'V', websiteInicio: '2026-09-16T19:00:00Z', websiteFim: '2026-09-23T19:00:00Z' },
+  { referencia: 'DEMO-2026-010', ano: 2026, numeroAno: 10, templateId: '0000', estado: 'CANCELADO', primeiraPagina: false,
+    titulo: 'Sismo sentido em Castelo Branco', texto: 'Registou-se um sismo de magnitude 2.6 ML com epicentro na região de Castelo Branco. O evento foi sentido de forma muito fraca.',
+    local: 'Castelo Branco', areaName: 'Continente', eventDateTime: '2026-09-18T08:17:00Z',
+    lat: '39.822000', lon: '-7.483000', depth: '10.00', magnitude: '2.6' },
+];
+
+// ---------------------------------------------------------------------------
 // Destinatários de demonstração
 // ---------------------------------------------------------------------------
 const DESTINATARIOS = [
@@ -389,6 +453,55 @@ async function main() {
       });
     }
     console.log(`[seed-demo] Comunicado criado: ${s.referencia} (${s.versoes.length} versão/versões)`);
+  }
+
+  // 5b. Eventos DEMO-2026
+  for (const d of DEMOS) {
+    const existing = await prisma.comunicado.findUnique({ where: { referencia: d.referencia } });
+    if (existing) {
+      console.log(`[seed-demo] Já existe: ${d.referencia}`);
+      continue;
+    }
+    const comunicado = await prisma.comunicado.create({
+      data: {
+        referencia: d.referencia,
+        ano: d.ano,
+        numeroAno: d.numeroAno,
+        origem: 'MANUAL',
+        templateId: d.templateId,
+        estado: d.estado,
+        primeiraPagina: d.primeiraPagina,
+        ativo: true,
+        titulo: d.titulo,
+        texto: d.texto,
+        local: d.local,
+        areaName: d.areaName,
+        eventDateTime: new Date(d.eventDateTime),
+        lat: d.lat,
+        lon: d.lon,
+        depth: d.depth,
+        magnitude: d.magnitude,
+        intmax: d.intmax || null,
+        websiteInicio: d.websiteInicio ? new Date(d.websiteInicio) : null,
+        websiteFim: d.websiteFim ? new Date(d.websiteFim) : null,
+        smsListas: [],
+        emailListas: [],
+        criadoPorId: admin.id,
+        criadoEm: new Date(d.eventDateTime),
+        atualizadoEm: new Date(d.eventDateTime),
+      },
+    });
+    await prisma.versao.create({
+      data: {
+        comunicadoId: comunicado.id,
+        numero: 1,
+        titulo: d.titulo,
+        texto: d.texto,
+        criadoPorId: admin.id,
+        criadoEm: new Date(d.eventDateTime),
+      },
+    });
+    console.log(`[seed-demo] Demo criado: ${d.referencia}`);
   }
 
   // 6. Sequência de referências
