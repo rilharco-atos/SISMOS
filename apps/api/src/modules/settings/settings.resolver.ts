@@ -32,6 +32,13 @@ export interface SmtpSettings {
 export interface SmsSettings {
   providerUrl: string;
   apiKey: string;
+  /** Utilizador da autenticação básica; no Twilio é o Account SID. Vazio no formato genérico. */
+  apiUser: string;
+  /**
+   * Formato do pedido ao fornecedor. "generico" é o do SMSExpress MEO usado pelo
+   * IPMA; "twilio" existe para ambientes de demonstração sem acesso a esse serviço.
+   */
+  formato: 'generico' | 'twilio';
   sender: string;
   /** 'test': só contactos internos recebem; 'production': envio real. */
   modo: 'test' | 'production';
@@ -114,6 +121,8 @@ export function resolverSms(cfg: Partial<SystemConfig> | null, env: Env): SmsSet
     simulado: ambiente !== 'production' && (env('ENVIO_SIMULADO') ?? '').toLowerCase() === 'true',
     providerUrl: env('SMS_PROVIDER_URL') ?? '',
     apiKey: env('SMS_API_KEY') ?? '',
+    apiUser: env('SMS_API_USER') ?? '',
+    formato: (env('SMS_PROVIDER_FORMATO') ?? '').toLowerCase() === 'twilio' ? 'twilio' : 'generico',
     sender: (preenchido(cfg?.smsSender) ? cfg!.smsSender! : env('SMS_SENDER')) || 'IPMA',
     modo: !imposto && cfg?.smsMode === 'production' ? 'production' : 'test',
     impostoPeloAmbiente: imposto,

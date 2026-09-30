@@ -173,6 +173,28 @@ export class DeliveryService {
     return r;
   }
 
+  /**
+   * Pedido ao fornecedor de SMS. O formato genérico é o do SMSExpress MEO usado
+   * pelo IPMA; o Twilio exige form-encoded com autenticação básica
+   * (Account SID e Auth Token) e o remetente tem de ser um número deles.
+   */
+  private async pedidoSms(sms: SmsSettings, to: string, mensagem: string): Promise<void> {
+    if (sms.formato === 'twilio') {
+      const corpo = new URLSearchParams({ To: to, From: sms.sender, Body: mensagem });
+      await firstValueFrom(this.http.post(sms.providerUrl, corpo.toString(), {
+        auth: { username: sms.apiUser, password: sms.apiKey },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 10000,
+      }));
+      return;
+    }
+    await firstValueFrom(this.http.post(
+      sms.providerUrl,
+      { apiKey: sms.apiKey, sender: sms.sender, to, message: mensagem },
+      { timeout: 10000 },
+    ));
+  }
+
   private async enviarSms(sms: SmsSettings, mensagem: string, destinatarios: any[], jaEnviados: Set<string>): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     const comTelefone = destinatarios.filter(d => d.destinatario.telefone);
@@ -188,7 +210,7 @@ export class DeliveryService {
         if (sms.simulado) {
           this.logger.log(JSON.stringify({ msg: 'SMS simulado', destinatarioId: d.destinatario.id, caracteres: mensagem.length, mensagem }));
         } else {
-          await firstValueFrom(this.http.post(sms.providerUrl, { apiKey: sms.apiKey, sender: sms.sender, to: d.destinatario.telefone, message: mensagem }, { timeout: 10000 }));
+          await this.pedidoSms(sms, d.destinatario.telefone, mensagem);
         }
         jaEnviados.add(chave);
         r.enviados++;
