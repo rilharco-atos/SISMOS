@@ -81,7 +81,12 @@ export function MapaSismos({
       L.tileLayer(TILE_LABELS, { maxZoom: 16, opacity: 1 }).addTo(map);
 
       const valid = pontos.filter(p => p.lat != null && p.lon != null);
-      if (!valid.length) { map.setView([39.5, -8.0], 6); return; }
+
+      // View inicial garantida — Leaflet precisa de um setView antes do fitBounds
+      // para funcionar correctamente quando o container acabou de montar.
+      map.setView([39.5, -8.0], 6);
+
+      if (!valid.length) return;
 
       valid.forEach(p => {
         const mag = p.magnitude != null ? Number(p.magnitude) : undefined;
@@ -119,20 +124,23 @@ export function MapaSismos({
         ).addTo(map);
       });
 
-      if (valid.length === 1) {
-        map.setView([valid[0].lat, valid[0].lon], pulse ? 9 : 8);
-      } else {
-        // Se os pontos abrangem mais de 10° de longitude (Continental + Ilhas)
-        // usa o enquadramento de Portugal para não mostrar África do Norte
-        const lons = valid.map(p => p.lon);
-        const spanLon = Math.max(...lons) - Math.min(...lons);
-        if (spanLon > 10) {
-          map.fitBounds(PT_BOUNDS, { padding: [24, 24] });
+      // Ajustar vista após um tick para garantir que o container tem dimensões
+      setTimeout(() => {
+        if (!active) return;
+        map.invalidateSize();
+        if (valid.length === 1) {
+          map.setView([valid[0].lat, valid[0].lon], pulse ? 9 : 8);
         } else {
-          const bounds = L.latLngBounds(valid.map((p: any) => [p.lat, p.lon]));
-          map.fitBounds(bounds.pad(0.35), { maxZoom: 9 });
+          const lons = valid.map(p => p.lon);
+          const spanLon = Math.max(...lons) - Math.min(...lons);
+          if (spanLon > 10) {
+            map.fitBounds(PT_BOUNDS, { padding: [24, 24] });
+          } else {
+            const bounds = L.latLngBounds(valid.map((p: any) => [p.lat, p.lon]));
+            map.fitBounds(bounds.pad(0.35), { maxZoom: 9 });
+          }
         }
-      }
+      }, 80);
     }
 
     loadLeaflet(init);
