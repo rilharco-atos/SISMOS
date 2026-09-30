@@ -166,9 +166,9 @@ export class DeliveryService {
         this.metrics.inc(M.ENVIOS, { canal: 'email', resultado: simulado ? 'simulado' : 'ok' });
       } catch (e: any) {
         r.falhas++;
-        r.erro = e.message;
+        r.erro = this.erroFornecedor(e);
         this.metrics.inc(M.ENVIOS, { canal: 'email', resultado: 'falha' });
-        this.logger.error(JSON.stringify({ msg: 'Falha no envio de email', destinatarioId: d.destinatario.id, erro: e.message }));
+        this.logger.error(JSON.stringify({ msg: 'Falha no envio de email', destinatarioId: d.destinatario.id, erro: r.erro }));
       }
     }
     return r;
@@ -179,6 +179,17 @@ export class DeliveryService {
    * pelo IPMA; o Twilio exige form-encoded com autenticação básica
    * (Account SID e Auth Token) e o remetente tem de ser um número deles.
    */
+  /**
+   * Razão da falha tal como o fornecedor a descreve. O `message` do axios traz
+   * apenas o código HTTP; o motivo real vem no corpo da resposta.
+   */
+  private erroFornecedor(e: any): string {
+    const dados = e?.response?.data;
+    if (dados == null) return e?.message ?? 'erro desconhecido';
+    const texto = typeof dados === 'string' ? dados : JSON.stringify(dados);
+    return `${e.message} — ${texto.slice(0, 500)}`;
+  }
+
   private async pedidoSms(sms: SmsSettings, to: string, mensagem: string): Promise<void> {
     if (sms.formato === 'twilio') {
       const corpo = new URLSearchParams({ To: to, From: sms.sender, Body: mensagem });
@@ -218,9 +229,9 @@ export class DeliveryService {
         this.metrics.inc(M.ENVIOS, { canal: 'sms', resultado: sms.simulado ? 'simulado' : 'ok' });
       } catch (e: any) {
         r.falhas++;
-        r.erro = e.message;
+        r.erro = this.erroFornecedor(e);
         this.metrics.inc(M.ENVIOS, { canal: 'sms', resultado: 'falha' });
-        this.logger.error(JSON.stringify({ msg: 'Falha no envio de SMS', destinatarioId: d.destinatario.id, erro: e.message }));
+        this.logger.error(JSON.stringify({ msg: 'Falha no envio de SMS', destinatarioId: d.destinatario.id, erro: r.erro }));
       }
     }
     return r;
