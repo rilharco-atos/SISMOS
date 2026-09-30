@@ -85,39 +85,89 @@ function TemplateEditor({ rawTemplate, phValues, onChange }: {
 }) {
   const segs = parseSegs(rawTemplate);
   const hasPh = segs.some(s => s.t === 'ph');
+  const totalPh = segs.filter(s => s.t === 'ph').length;
+  const unfilledCount = segs.filter(s => s.t === 'ph' && !phValues[(s as any).marker]).length;
+  const allFilled = hasPh && unfilledCount === 0;
+
   return (
-    <div style={{
-      whiteSpace: 'pre-wrap', lineHeight: 1.85, padding: '12px 14px',
-      background: 'var(--bg-muted)', borderRadius: 8, border: '1px solid var(--border)',
-      fontSize: 13, color: 'var(--text-1)', minHeight: 180, wordBreak: 'break-word',
-    }}>
-      {hasPh
-        ? segs.map((s, i) => {
-            if (s.t === 'text') return <span key={i}>{s.v}</span>;
-            const label = phLabel(s.marker);
-            const w = Math.min(Math.max(label.length * 8 + 28, 64), 300);
-            const filled = !!(phValues[s.marker]);
-            return (
-              <input
-                key={`${s.marker}-${i}`}
-                type="text"
-                value={phValues[s.marker] ?? ''}
-                placeholder={label}
-                onChange={e => onChange(s.marker, e.target.value)}
-                title={s.marker}
-                style={{
-                  display: 'inline-block', width: w,
-                  background: filled ? 'rgba(34,197,94,0.07)' : 'rgba(34,197,94,0.18)',
-                  border: `1.5px solid ${filled ? '#86efac' : 'var(--accent,#22c55e)'}`,
-                  borderRadius: 4, padding: '1px 6px', fontSize: '0.88em',
-                  fontFamily: 'var(--font-mono)', color: filled ? 'var(--text-1)' : 'var(--accent)',
-                  outline: 'none', verticalAlign: 'text-bottom', lineHeight: '1.5', cursor: 'text',
-                }}
-              />
-            );
-          })
-        : rawTemplate
-      }
+    <div>
+      {/* Barra de estado do template */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+        background: allFilled ? 'var(--success-bg)' : 'var(--bg-table-head)',
+        border: '1px solid var(--border)', borderBottom: 'none',
+        borderRadius: '8px 8px 0 0', fontSize: 12,
+        color: allFilled ? 'var(--success)' : 'var(--text-3)',
+      }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" />
+        </svg>
+        <span style={{ fontWeight: 600 }}>{allFilled ? 'Template completo' : 'Estrutura do template bloqueada'}</span>
+        {hasPh && (
+          <span style={{
+            marginLeft: 'auto', fontWeight: 700,
+            color: allFilled ? 'var(--success)' : 'var(--warning)',
+          }}>
+            {allFilled ? `✓ ${totalPh} campo${totalPh !== 1 ? 's' : ''} preenchido${totalPh !== 1 ? 's' : ''}` : `${unfilledCount} campo${unfilledCount !== 1 ? 's' : ''} por preencher`}
+          </span>
+        )}
+      </div>
+
+      {/* Corpo do template */}
+      <div style={{
+        whiteSpace: 'pre-wrap', lineHeight: 2, padding: '14px 16px',
+        background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+        borderRadius: '0 0 8px 8px', fontSize: 13,
+        color: 'var(--text-2)', minHeight: 180, wordBreak: 'break-word',
+        cursor: 'default',
+      }}>
+        {hasPh
+          ? segs.map((s, i) => {
+              if (s.t === 'text') return (
+                <span key={i} style={{ userSelect: 'text', color: 'var(--text-2)', opacity: 0.85 }}>{s.v}</span>
+              );
+              const label = phLabel((s as any).marker);
+              const w = Math.min(Math.max(label.length * 8 + 36, 80), 340);
+              const filled = !!(phValues[(s as any).marker]);
+              return (
+                <input
+                  key={`${(s as any).marker}-${i}`}
+                  type="text"
+                  value={phValues[(s as any).marker] ?? ''}
+                  placeholder={label}
+                  onChange={e => onChange((s as any).marker, e.target.value)}
+                  title={(s as any).marker}
+                  style={{
+                    display: 'inline-block', width: w,
+                    background: filled ? 'rgba(6,118,71,0.09)' : 'rgba(6,118,71,0.14)',
+                    border: `2px solid ${filled ? '#4ade80' : '#16a34a'}`,
+                    borderRadius: 5, padding: '2px 8px',
+                    fontSize: '0.9em', fontFamily: 'var(--font-sans)',
+                    color: filled ? 'var(--text-1)' : '#15803d',
+                    fontWeight: filled ? 500 : 700,
+                    outline: 'none', verticalAlign: 'text-bottom',
+                    lineHeight: '1.6', cursor: 'text',
+                    animation: filled ? 'none' : 'ph-pulse 2s ease-in-out infinite',
+                  }}
+                />
+              );
+            })
+          : rawTemplate
+        }
+      </div>
+
+      {/* Legenda de campos */}
+      {hasPh && (
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-3)' }}>
+          <span style={{
+            display: 'inline-block', width: 28, height: 14, borderRadius: 3,
+            background: 'rgba(6,118,71,0.14)', border: '2px solid #16a34a', verticalAlign: 'middle',
+          }} />
+          <span>Campos editáveis — clique para preencher</span>
+          <span style={{ marginLeft: 8, opacity: 0.7 }}>· O restante texto pertence ao template e não pode ser alterado</span>
+        </div>
+      )}
     </div>
   );
 }
