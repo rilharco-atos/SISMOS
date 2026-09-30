@@ -238,10 +238,6 @@ Instituto Português do Mar e da Atmosfera, I.P. — Serviço de Sismologia`,
 // Eventos DEMO-2026 (simplificados, compatíveis com o seed de desenvolvimento)
 // ---------------------------------------------------------------------------
 
-// Comunicado tem @@unique([ano, numeroAno]) e os SISMOS acima já ocupam
-// numeroAno 1–6 em 2026. Os DEMO são gravados a partir de 101 para não colidir.
-const DEMO_NUMERO_BASE = 100;
-
 const DEMOS = [
   { referencia: 'DEMO-2026-001', ano: 2026, numeroAno: 1, templateId: '0001', estado: 'ENVIADO', primeiraPagina: true,
     titulo: 'Sismo sentido na Região dos Açores', texto: 'Ocorreu um sismo de magnitude 5.8 ML com epicentro na região dos Açores (ilha do Faial). O sismo foi sentido em várias ilhas do grupo Central.',
@@ -330,6 +326,19 @@ const DESTINATARIOS = [
 ];
 
 // ---------------------------------------------------------------------------
+
+// Comunicado tem @@unique([ano, numeroAno]). Os comunicados criados pela
+// aplicação ocupam números nesse mesmo ano, por isso o seed não pode usar
+// valores fixos: aloca sempre acima do que já lá está.
+async function proximoNumeroAno(ano) {
+  const ultimo = await prisma.comunicado.findFirst({
+    where: { ano },
+    orderBy: { numeroAno: 'desc' },
+    select: { numeroAno: true },
+  });
+  return (ultimo?.numeroAno ?? 0) + 1;
+}
+
 async function main() {
   console.log('[seed-demo] A iniciar seed de dados de demonstração…');
 
@@ -419,45 +428,49 @@ async function main() {
       continue;
     }
 
-    const comunicado = await prisma.comunicado.create({
-      data: {
-        referencia: s.referencia,
-        ano: s.ano,
-        numeroAno: s.numeroAno,
-        origem: 'MANUAL',
-        templateId: '0001',
-        estado: s.estado,
-        primeiraPagina: s.estado === 'ENVIADO',
-        ativo: true,
-        titulo: s.titulo,
-        texto: s.texto,
-        local: s.local,
-        areaName: s.areaName,
-        eventDateTime: s.eventDateTime,
-        lat: s.lat,
-        lon: s.lon,
-        depth: s.depth,
-        magnitude: s.magnitude,
-        intmax: s.intmax,
-        regiaoIntmax: s.regiaoIntmax,
-        smsListas: s.smsListas,
-        emailListas: s.emailListas,
-        criadoPorId: admin.id,
-      },
-    });
-
-    for (const v of s.versoes) {
-      await prisma.versao.create({
+    try {
+      const comunicado = await prisma.comunicado.create({
         data: {
-          comunicadoId: comunicado.id,
-          numero: v.numero,
-          titulo: v.titulo,
-          texto: v.texto,
+          referencia: s.referencia,
+          ano: s.ano,
+          numeroAno: await proximoNumeroAno(s.ano),
+          origem: 'MANUAL',
+          templateId: '0001',
+          estado: s.estado,
+          primeiraPagina: s.estado === 'ENVIADO',
+          ativo: true,
+          titulo: s.titulo,
+          texto: s.texto,
+          local: s.local,
+          areaName: s.areaName,
+          eventDateTime: s.eventDateTime,
+          lat: s.lat,
+          lon: s.lon,
+          depth: s.depth,
+          magnitude: s.magnitude,
+          intmax: s.intmax,
+          regiaoIntmax: s.regiaoIntmax,
+          smsListas: s.smsListas,
+          emailListas: s.emailListas,
           criadoPorId: admin.id,
         },
       });
+
+      for (const v of s.versoes) {
+        await prisma.versao.create({
+          data: {
+            comunicadoId: comunicado.id,
+            numero: v.numero,
+            titulo: v.titulo,
+            texto: v.texto,
+            criadoPorId: admin.id,
+          },
+        });
+      }
+      console.log(`[seed-demo] Comunicado criado: ${s.referencia} (${s.versoes.length} versão/versões)`);
+    } catch (e) {
+      console.error(`[seed-demo] Falhou ${s.referencia}: ${e.message}`);
     }
-    console.log(`[seed-demo] Comunicado criado: ${s.referencia} (${s.versoes.length} versão/versões)`);
   }
 
   // 5b. Eventos DEMO-2026
@@ -472,7 +485,7 @@ async function main() {
         data: {
           referencia: d.referencia,
           ano: d.ano,
-          numeroAno: DEMO_NUMERO_BASE + d.numeroAno,
+          numeroAno: await proximoNumeroAno(d.ano),
           origem: 'MANUAL',
           templateId: d.templateId,
           estado: d.estado,
@@ -513,12 +526,14 @@ async function main() {
     }
   }
 
-  // 6. Sequência de referências
+  // 6. Sequência de referências — alinhar com o numeroAno mais alto que ficou
+  // gravado, senão o próximo comunicado criado pela aplicação colide.
   const seq = await prisma.referenciaSequencia.findUnique({ where: { ano: 2026 } });
+  const ultimo = Math.max(seq?.ultimo ?? 0, (await proximoNumeroAno(2026)) - 1);
   await prisma.referenciaSequencia.upsert({
     where: { ano: 2026 },
-    update: { ultimo: Math.max(seq?.ultimo ?? 0, 6) },
-    create: { ano: 2026, ultimo: 6 },
+    update: { ultimo },
+    create: { ano: 2026, ultimo },
   });
 
   console.log('[seed-demo] Seed concluído.');
