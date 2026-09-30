@@ -155,7 +155,11 @@ export class DeliveryService {
       const chave = chaveEmail(destino);
       if (jaEnviados.has(chave)) continue;
       try {
-        if (!simulado) await transporter.sendMail({ from: smtp.from, to: destino, ...email });
+        if (simulado) {
+          this.logger.log(JSON.stringify({ msg: 'Email simulado', destinatarioId: d.destinatario.id, assunto: email.subject }));
+        } else {
+          await transporter.sendMail({ from: smtp.from, to: destino, ...email });
+        }
         jaEnviados.add(chave);
         r.enviados++;
         this.metrics.inc(M.ENVIOS, { canal: 'email', resultado: simulado ? 'simulado' : 'ok' });
@@ -181,7 +185,11 @@ export class DeliveryService {
       const chave = chaveTelefone(d.destinatario.telefone);
       if (jaEnviados.has(chave)) continue;
       try {
-        if (!sms.simulado) await firstValueFrom(this.http.post(sms.providerUrl, { apiKey: sms.apiKey, sender: sms.sender, to: d.destinatario.telefone, message: mensagem }, { timeout: 10000 }));
+        if (sms.simulado) {
+          this.logger.log(JSON.stringify({ msg: 'SMS simulado', destinatarioId: d.destinatario.id, caracteres: mensagem.length, mensagem }));
+        } else {
+          await firstValueFrom(this.http.post(sms.providerUrl, { apiKey: sms.apiKey, sender: sms.sender, to: d.destinatario.telefone, message: mensagem }, { timeout: 10000 }));
+        }
         jaEnviados.add(chave);
         r.enviados++;
         this.metrics.inc(M.ENVIOS, { canal: 'sms', resultado: sms.simulado ? 'simulado' : 'ok' });
