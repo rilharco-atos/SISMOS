@@ -60,6 +60,7 @@ export default function DashboardPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saude, setSaude] = useState<any>(null);
+  const [showMapa, setShowMapa] = useState(false);
   const pontosComLocalizacao = items.filter((i: any) => i.lat != null && i.lon != null);
 
   const load = useCallback(async () => {
@@ -88,6 +89,10 @@ export default function DashboardPage() {
           <p className="page-sub">Comunicados sismológicos — Centro de Operações IPMA</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowMapa(true)} disabled={!pontosComLocalizacao.length}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+            Ver Mapa
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => exportarCsv(items)} disabled={!items.length}>Exportar CSV</button>
         </div>
       </div>
@@ -139,43 +144,6 @@ export default function DashboardPage() {
           <div className="kpi-value">{v(kpis?.automaticos24h ?? 0)}</div>
           <div className="kpi-sub">Ingestão via FTP/XML</div>
         </div>
-      </div>
-
-      {/* Mapa de Sismicidade */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px 10px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-              <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
-            </svg>
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-3)' }}>Sismicidade — Portugal</span>
-            {pontosComLocalizacao.length > 0 && (
-              <span style={{ fontSize: 12, color: 'var(--text-4)' }}>{pontosComLocalizacao.length} evento{pontosComLocalizacao.length !== 1 ? 's' : ''} com localização</span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            {[['≥ 6', '#DC2626'], ['≥ 5', '#EA580C'], ['≥ 4', '#D97706'], ['≥ 3', '#22C55E'], ['< 3', '#3B82F6']].map(([label, color]) => (
-              <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-3)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, display: 'inline-block' }} />{label}
-              </span>
-            ))}
-          </div>
-        </div>
-        {loading ? (
-          <div className="skeleton" style={{ height: 420, borderRadius: 0 }} />
-        ) : (
-          <MapaSismos
-            pontos={pontosComLocalizacao.map((i: any) => ({
-              id: i.id, referencia: i.referencia,
-              lat: Number(i.lat), lon: Number(i.lon),
-              magnitude: i.magnitude, local: i.local,
-              areaName: i.areaName, titulo: i.titulo,
-              estado: i.estado, eventDateTime: i.eventDateTime,
-            }))}
-            height={420}
-          />
-        )}
       </div>
 
       <div className="table-card">
@@ -258,6 +226,41 @@ export default function DashboardPage() {
         </table>
       </div>
 
+      {showMapa && (
+        <div className="modal-backdrop" onClick={() => setShowMapa(false)}>
+          <div className="modal" style={{ width: 'min(860px,96vw)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+              <strong style={{ fontSize: 15 }}>Mapa de Sismos</strong>
+              <span style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 4 }}>
+                {pontosComLocalizacao.length} eventos com localização
+              </span>
+              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowMapa(false)}>✕</button>
+            </div>
+            <div style={{ padding: '0 0 4px' }}>
+              <MapaSismos
+                pontos={pontosComLocalizacao.map((i: any) => ({
+                  id: i.id, referencia: i.referencia,
+                  lat: Number(i.lat), lon: Number(i.lon),
+                  magnitude: i.magnitude, local: i.local,
+                  areaName: i.areaName, titulo: i.titulo,
+                  estado: i.estado, eventDateTime: i.eventDateTime,
+                }))}
+                height={520}
+              />
+            </div>
+            <div style={{ padding: '10px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-3)' }}>Magnitude</span>
+              {[['≥ 6', '#DC2626'], ['≥ 5', '#EA580C'], ['≥ 4', '#D97706'], ['≥ 3', '#22C55E'], ['< 3', '#3B82F6']].map(([label, color]) => (
+                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-2)' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
