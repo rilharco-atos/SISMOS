@@ -58,8 +58,14 @@ export default function ComunicadoPage() {
     if (!selectedVersao || selectedListas.length === 0) return;
     setEnviando(true);
     try {
-      await deliveryApi.enviar(id, selectedVersao, selectedListas);
-      setMsg('Comunicado enviado com sucesso');
+      const r = await deliveryApi.enviar(id, selectedVersao, selectedListas);
+      const partes = [
+        r?.simulado ? 'Modo simulado — nada saiu' : 'Comunicado enviado',
+        `${r?.emails ?? 0} email(s), ${r?.sms ?? 0} SMS`,
+      ];
+      if (r?.ignoradosModoTeste) partes.push(`${r.ignoradosModoTeste} ignorado(s): em modo de teste só recebem contactos internos`);
+      if (r?.falhas) partes.push(`${r.falhas} falha(s)`);
+      setMsg(partes.join(' · '));
       setShowEnviarModal(false);
       const d = await comunicadosApi.get(id); setItem(d);
     } catch (e: any) { setMsg(`Erro: ${e.message}`); }
