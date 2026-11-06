@@ -29,6 +29,13 @@ const FORM_VAZIO: Form = {
   primeiraPagina: false, ativo: true, titulo: '', texto: '', imagemUrl: '', emailListas: [], smsListas: [],
 };
 
+/*********************************************************************************************************************
+* @method       Svg
+* @description  Minimal SVG wrapper that renders a viewBox="0 0 24 24" element around any child
+*               path or shape nodes, used for inline icon rendering throughout the page.
+* @param        children — SVG child elements (path, polyline, polygon, line, etc.)
+* @return       SVG element
+*********************************************************************************************************************/
 function Svg({ children }: { children: React.ReactNode }) {
   return <svg viewBox="0 0 24 24">{children}</svg>;
 }
@@ -38,6 +45,15 @@ const doInputUtc = (v: string) => (v ? `${v}:00Z` : undefined);
 const numero = (v: string) => (v.trim() === '' || Number.isNaN(Number(v)) ? undefined : Number(v));
 const str = (v: unknown) => (v == null ? '' : String(v));
 
+/*********************************************************************************************************************
+* @method       linhasEvento
+* @description  Derives a flat list of label/value pairs describing a seismic event from the current
+*               form state, for use in the bulletin document preview. Date/time is shown in both local
+*               and UTC; coordinates use cardinal compass notation.
+* @param        f — current bulletin form state
+* @return       array of [label, value] tuples for display in the preview panel
+* @uses         partes, zonaDaArea, numero
+*********************************************************************************************************************/
 function linhasEvento(f: Form): [string, string][] {
   const out: [string, string][] = [];
   const dt = f.eventDateTime ? new Date(`${f.eventDateTime}:00Z`) : null;
@@ -56,12 +72,17 @@ function linhasEvento(f: Form): [string, string][] {
   return out;
 }
 
-// ─── Template placeholder editor ────────────────────────────────────────────
-
-// Detecta [marcador] e |---- TEXTO LIVRE ----|  (formatos IPMA)
 const PH_RE = /\[[^\]\n]*\]|\{m\.m\]|\|[-\s]*[^|\n]+?[-\s]*\|/g;
 type Seg = { t: 'text'; v: string } | { t: 'ph'; marker: string };
 
+/*********************************************************************************************************************
+* @method       parseSegs
+* @description  Splits a bulletin template string into an ordered sequence of literal-text segments
+*               and placeholder segments. Placeholders match either the [marcador] or
+*               |---- TEXTO LIVRE ----| IPMA template formats.
+* @param        texto — raw template string potentially containing IPMA placeholders
+* @return       array of Seg objects alternating between type 'text' and type 'ph'
+*********************************************************************************************************************/
 function parseSegs(texto: string): Seg[] {
   const segs: Seg[] = [];
   const re = new RegExp(PH_RE.source, 'g');
@@ -75,10 +96,29 @@ function parseSegs(texto: string): Seg[] {
   return segs;
 }
 
+/*********************************************************************************************************************
+* @method       phLabel
+* @description  Extracts a human-readable label from an IPMA template placeholder marker by stripping
+*               the surrounding brackets, braces, and leading/trailing dashes.
+* @param        marker — raw placeholder string such as "[data do evento]" or "|---- texto ----|"
+* @return       cleaned label string for use as the input placeholder attribute
+*********************************************************************************************************************/
 function phLabel(marker: string): string {
   return marker.replace(/^[\[{]|[\]}]$/g, '').replace(/^-+\s*|\s*-+$/g, '').trim();
 }
 
+/*********************************************************************************************************************
+* @method       TemplateEditor
+* @description  Inline template editor that renders the bulletin template body with placeholders as
+*               focusable, inline input fields. Fixed template text is rendered as non-editable spans.
+*               Shows a completion status bar and a legend below the editor body. Fires onChange for
+*               each placeholder value the analyst types, enabling real-time preview updates.
+* @param        rawTemplate — the unmodified template string from the server
+* @param        phValues — current map from placeholder marker strings to analyst-entered values
+* @param        onChange — callback invoked with (marker, value) when a placeholder is edited
+* @return       JSX div containing the status bar, template body, and legend
+* @uses         parseSegs, phLabel
+*********************************************************************************************************************/
 function TemplateEditor({ rawTemplate, phValues, onChange }: {
   rawTemplate: string;
   phValues: Record<string, string>;
@@ -173,8 +213,17 @@ function TemplateEditor({ rawTemplate, phValues, onChange }: {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-
+/*********************************************************************************************************************
+* @method       NovoComunicado
+* @description  Multi-step wizard for creating a new seismic bulletin or a new version of an existing
+*               one. Step 1: upload XML or choose manual entry. Step 2: review event data, edit the
+*               bulletin text via TemplateEditor, upload an intensity map image, and select email/SMS
+*               distribution lists. Step 3: confirm dispatch. Handles XML analysis, template
+*               prefilling, placeholder resolution, image upload, draft saving, approval, and dispatch.
+* @return       JSX element — the full wizard UI including the confirmation modal
+* @uses         useRouter, useSearchParams, comunicadosApi, deliveryApi, construirSms, linhasEvento,
+*               parseSegs, TemplateEditor, partes, zonaDaArea
+*********************************************************************************************************************/
 function NovoComunicado() {
   const router = useRouter();
   const params = useSearchParams();
@@ -220,7 +269,6 @@ function NovoComunicado() {
     }).catch(() => setErro('Comunicado de origem não encontrado'));
   }, [versaoDe]);
 
-  // Preenche o texto do template com os dados do evento enquanto o analista não o editar.
   useEffect(() => {
     if (textoEditado || passo === 1) return;
     const t = setTimeout(() => {
@@ -341,7 +389,6 @@ function NovoComunicado() {
     setAEnviar(true);
     try {
       const r = await deliveryApi.enviarListas(envio.comunicadoId, envio.versaoId, form.emailListas, form.smsListas);
-      // Com falhas, o analista vai para o detalhe (estado por lista) em vez do dashboard.
       router.push(r.falhas ? `/comunicados/${envio.comunicadoId}` : '/');
     } catch (e: any) { setErro(e.message); setEnvio(null); setAEnviar(false); }
   }
@@ -634,6 +681,13 @@ function NovoComunicado() {
   );
 }
 
+/*********************************************************************************************************************
+* @method       NovoComunicadoPage
+* @description  Next.js page entry point that wraps NovoComunicado in a React Suspense boundary,
+*               required because the component reads URL search parameters via useSearchParams().
+* @return       Suspense element with a skeleton fallback during initial render
+* @uses         NovoComunicado
+*********************************************************************************************************************/
 export default function NovoComunicadoPage() {
   return <Suspense fallback={<div className="skeleton" style={{ height: 320 }} />}><NovoComunicado /></Suspense>;
 }

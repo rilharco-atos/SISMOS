@@ -11,7 +11,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       # Apenas acessível a partir do próprio servidor (desenvolvimento e manutenção).
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5436:5432"
     healthcheck:
       test: ["CMD-SHELL", "psql -U sismos -d sismos -c 'SELECT 1' -q 2>/dev/null"]
       interval: 5s
@@ -54,10 +54,10 @@ services:
       METRICS_TOKEN: ${METRICS_TOKEN:-}
       BACKUP_DIR: /app/backups
       BACKUP_MAX_IDADE_HORAS: ${BACKUP_MAX_IDADE_HORAS:-26}
-      APP_URL: ${APP_URL:-http://localhost:3001}
+      APP_URL: ${APP_URL:-http://localhost:3011}
       NODE_ENV: ${NODE_ENV:-production}
     ports:
-      - "3001:3001"
+      - "3011:3001"
     volumes:
       - uploads:/app/uploads
       - ftp_incoming:/app/ftp/incoming
@@ -76,16 +76,17 @@ services:
       context: ./apps/ui
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3011}
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3011}
     ports:
       - "3000:3000"
 
   backup:
+    profiles: [backup]
     image: postgres:16-alpine
     restart: unless-stopped
     depends_on:

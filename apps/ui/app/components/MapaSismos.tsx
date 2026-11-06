@@ -1,14 +1,20 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-// Esri Light Gray Canvas — gratuito, sem API key
 const TILE_BASE = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
 const TILE_LABELS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
 const TILE_ATTR = 'Tiles &copy; <a href="https://www.esri.com">Esri</a> &mdash; Esri, DeLorme, NAVTEQ';
 
-// Portugal Continental + Madeira + Açores
 const PT_BOUNDS: [[number, number], [number, number]] = [[28.0, -33.0], [43.5, -5.5]];
 
+/*********************************************************************************************************************
+* @method       magColor
+* @description  Returns a hex colour for a given seismic magnitude value using the same five-tier
+*               scale displayed in the map legend: red (≥6), orange (≥5), amber (≥4), green (≥3),
+*               blue (<3). Returns indigo for unknown magnitude.
+* @param        m — numeric magnitude, or undefined
+* @return       CSS hex colour string
+*********************************************************************************************************************/
 function magColor(m?: number): string {
   if (!m) return '#6366F1';
   if (m >= 6) return '#DC2626';
@@ -33,6 +39,15 @@ export interface PontoSismo {
 
 const loadedRef = { done: false, callbacks: [] as (() => void)[] };
 
+/*********************************************************************************************************************
+* @method       loadLeaflet
+* @description  Lazily loads the Leaflet 1.9.4 CSS and JS from cdnjs into the document head, then
+*               fires the callback when Leaflet is ready. Multiple concurrent callers queue their
+*               callbacks and are all notified from a single script onload event, preventing duplicate
+*               script tags from being injected.
+* @param        cb — function to call once window.L is available
+* @return       void — executes cb synchronously if Leaflet is already loaded
+*********************************************************************************************************************/
 function loadLeaflet(cb: () => void) {
   if ((window as any).L) { cb(); return; }
   loadedRef.callbacks.push(cb);
@@ -52,6 +67,19 @@ function loadLeaflet(cb: () => void) {
   document.head.appendChild(s);
 }
 
+/*********************************************************************************************************************
+* @method       MapaSismos
+* @description  React component that renders an interactive Leaflet map of seismic events over an
+*               Esri Light Gray Canvas tile layer. Each event is plotted as a filled circle whose
+*               radius and colour encode its magnitude. When pulse is true, concentric propagation
+*               rings are drawn behind the main circle for use in the bulletin detail view. A tooltip
+*               shows the reference, title, magnitude and date on hover.
+* @param        pontos — array of seismic event location records with lat, lon and optional fields
+* @param        height — container height in pixels (default 380)
+* @param        pulse — when true, draws propagation rings around each point (default false)
+* @return       div element containing the Leaflet map instance
+* @uses         loadLeaflet, magColor
+*********************************************************************************************************************/
 export function MapaSismos({
   pontos,
   height = 380,
@@ -82,8 +110,6 @@ export function MapaSismos({
 
       const valid = pontos.filter(p => p.lat != null && p.lon != null);
 
-      // View inicial garantida — Leaflet precisa de um setView antes do fitBounds
-      // para funcionar correctamente quando o container acabou de montar.
       map.setView([39.5, -8.0], 6);
 
       if (!valid.length) return;
@@ -91,7 +117,6 @@ export function MapaSismos({
       valid.forEach(p => {
         const mag = p.magnitude != null ? Number(p.magnitude) : undefined;
         const color = magColor(mag);
-        // Raio em metros — cresce automaticamente com o zoom
         const radM = mag == null ? 6000
           : mag >= 6 ? 28000
           : mag >= 5 ? 18000
@@ -100,7 +125,6 @@ export function MapaSismos({
           : 5000;
 
         if (pulse) {
-          // Anéis de propagação (página de detalhe)
           [radM * 2.5, radM * 1.4].forEach((rad, i) => L.circle([p.lat, p.lon], {
             radius: rad, fillColor: color, color: color,
             weight: 1, opacity: 0.22 - i * 0.07, fillOpacity: 0.04,
@@ -124,7 +148,6 @@ export function MapaSismos({
         ).addTo(map);
       });
 
-      // Ajustar vista após um tick para garantir que o container tem dimensões
       setTimeout(() => {
         if (!active) return;
         map.invalidateSize();
@@ -145,7 +168,6 @@ export function MapaSismos({
 
     loadLeaflet(init);
     return () => { active = false; mapRef.current?.remove(); mapRef.current = null; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pKey]);
 
   return <div ref={containerRef} style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden', zIndex: 0, position: 'relative' }} />;

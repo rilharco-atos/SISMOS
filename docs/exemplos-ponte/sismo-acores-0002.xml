@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exemplo PONTE — Template 0002: Comunicado preliminar (Açores)
+  firstPage="true" porque é o primeiro comunicado público deste evento.
+-->
+<report
+  creating-user="ponte-test"
+  creating-authority="IPMA/CSEM"
+  creation-time="2026-10-30T11:15:00">
+
+  <event
+    templateID="0002"
+    firstPage="true"
+    active="true">
+
+    <areaName>Açores</areaName>
+    <eventDateTime>2026-10-30T11:02:00</eventDateTime>
+    <lat>37.7500</lat>
+    <lon>-25.6600</lon>
+    <depth>8</depth>
+    <magnitud>3.5</magnitud>
+    <local>Ponta Delgada</local>
+    <klmLinks></klmLinks>
+    <smsKey>LGA LIA</smsKey>
+    <emailKey>LGA LIA</emailKey>
+  </event>
+</report>

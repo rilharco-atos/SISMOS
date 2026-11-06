@@ -1,8 +1,12 @@
-/**
- * Leitor de CSV (RFC 4180): campos entre aspas com separadores, aspas duplicadas e quebras de linha.
- * O separador (";" ou ",") é detetado pela linha de cabeçalho. Devolve objetos indexados pelo cabeçalho
- * normalizado (minúsculas, sem acentos, espaços → "_"), com o número da linha de origem.
- */
+/*********************************************************************************************************************
+* @method       lerCsv
+* @description  RFC 4180-compliant CSV parser that handles quoted fields containing separator characters,
+*               doubled quotes and embedded line breaks. Autodetects the separator (semicolon or comma)
+*               from the header row. Returns objects indexed by normalised header names.
+* @param        conteudo — raw CSV string, optionally prefixed with a UTF-8 BOM (stripped automatically)
+* @return       Array of { linha, dados } where linha is the 1-based source line number and dados maps
+*               normalised header names to string field values
+*********************************************************************************************************************/
 export function lerCsv(conteudo: string): { linha: number; dados: Record<string, string> }[] {
   const texto = conteudo.replace(/^﻿/, '');
   const primeira = texto.split(/\r?\n/, 1)[0] ?? '';
@@ -46,6 +50,13 @@ export function lerCsv(conteudo: string): { linha: number; dados: Record<string,
   }));
 }
 
+/*********************************************************************************************************************
+* @method       normalizarCabecalho
+* @description  Normalises a CSV header string to a consistent key format: strips diacritics,
+*               trims whitespace, converts to lowercase, and replaces spaces and hyphens with underscores.
+* @param        h — raw header cell string
+* @return       Normalised string suitable for use as an object property key
+*********************************************************************************************************************/
 export function normalizarCabecalho(h: string): string {
   return h.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 }

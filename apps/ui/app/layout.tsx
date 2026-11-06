@@ -1,11 +1,20 @@
 'use client';
 import './globals.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { AvatarCropModal } from './_components/AvatarCropModal';
 
 const PIN_KEY = 'atos_sidebar_pinned';
 const THEME_KEY = 'atos_theme';
 
+/*********************************************************************************************************************
+* @method       Svg
+* @description  Minimal SVG wrapper that renders a viewBox="0 0 24 24" element around any child path
+*               or shape nodes, used throughout the sidebar and topbar for inline icon rendering.
+* @param        children — SVG child elements (path, polyline, circle, line, etc.)
+* @param        style — optional inline styles applied to the SVG element
+* @return       SVG element
+*********************************************************************************************************************/
 function Svg({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return <svg viewBox="0 0 24 24" style={style}>{children}</svg>;
 }
@@ -21,6 +30,13 @@ const NAV: { group: string; adminOnly?: boolean; items: { label: string; href: s
   ]},
 ];
 
+/*********************************************************************************************************************
+* @method       crumbFor
+* @description  Maps the current Next.js pathname to a human-readable breadcrumb label for the
+*               topbar. Returns an empty string for unrecognised paths.
+* @param        pathname — current route pathname from usePathname()
+* @return       breadcrumb label string, or empty string if the path is unknown
+*********************************************************************************************************************/
 function crumbFor(pathname: string): string {
   if (pathname === '/') return 'Dashboard';
   if (pathname === '/comunicados/novo') return 'Novo Comunicado';
@@ -31,21 +47,64 @@ function crumbFor(pathname: string): string {
   return '';
 }
 
+/*********************************************************************************************************************
+* @method       isActive
+* @description  Determines whether a sidebar navigation item should be rendered as active given the
+*               current pathname. The /comunicados item is treated as active for all sub-routes except
+*               /comunicados/novo, which has its own dedicated entry.
+* @param        pathname — current route pathname from usePathname()
+* @param        href — the navigation item's href to test against
+* @return       true when the item should be highlighted as active
+*********************************************************************************************************************/
 function isActive(pathname: string, href: string) {
   if (href === '/') return pathname === '/';
   if (href === '/comunicados') return pathname.startsWith('/comunicados') && pathname !== '/comunicados/novo';
   return pathname.startsWith(href);
 }
 
+/*********************************************************************************************************************
+* @method       safeGet
+* @description  Reads a value from localStorage, returning null on any error (private browsing mode,
+*               quota exceeded, or storage blocked by browser policy).
+* @param        k — localStorage key
+* @return       stored string value, or null if unavailable
+*********************************************************************************************************************/
 function safeGet(k: string) { try { return localStorage.getItem(k); } catch { return null; } }
-function safeSet(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* armazenamento indisponível */ } }
 
+/*********************************************************************************************************************
+* @method       safeSet
+* @description  Writes a value to localStorage, silently ignoring any error (private browsing mode,
+*               quota exceeded, or storage blocked by browser policy).
+* @param        k — localStorage key
+* @param        v — value to store
+*********************************************************************************************************************/
+function safeSet(k: string, v: string) { try { localStorage.setItem(k, v); } catch { } }
+
+/*********************************************************************************************************************
+* @method       initials
+* @description  Derives a two-letter avatar abbreviation from a display name by taking the first
+*               character of the first word and the first character of the last word, uppercased.
+*               Returns '··' when no name is provided.
+* @param        name — optional display name string
+* @return       one or two uppercase initials, or '··' as a fallback
+*********************************************************************************************************************/
 function initials(name?: string) {
   if (!name) return '··';
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
+/*********************************************************************************************************************
+* @method       RootLayout
+* @description  Root Next.js layout that renders the application shell: a collapsible/pinnable sidebar
+*               with navigation, a persistent topbar with breadcrumbs, theme toggle, and quick actions,
+*               and a main content area. On the /login route the shell is bypassed and only the page
+*               content is rendered. Polls /api/system/health every 60 seconds and displays an
+*               environment banner for test or simulation modes.
+* @param        children — the active page's React subtree
+* @return       HTML document element with the full application shell, or a bare login shell
+* @uses         useRouter, usePathname, safeGet, safeSet, crumbFor, isActive, initials, Svg
+*********************************************************************************************************************/
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,8 +114,47 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [menuOpen, setMenuOpen] = useState(false);
   const [now, setNow] = useState('');
   const [saude, setSaude] = useState<{ ambiente?: string; modoEnvio?: string; envioSimulado?: boolean } | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>();
   const userBtn = useRef<HTMLButtonElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Passo 1 — escolher ficheiro: abre o modal de recorte
+  const handleAvatarUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCropFile(file);
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  }, []);
+
+  // Passo 2 — confirmar recorte: faz o upload do Blob final
+  const handleCropConfirm = useCallback(async (blob: Blob) => {
+    setCropFile(null);
+    setAvatarUploading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const fd = new FormData();
+      fd.append('avatar', blob, 'avatar.jpg');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/users/me/avatar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (res.ok) {
+        const { avatarUrl } = await res.json();
+        const updated = { ...user, avatarUrl };
+        setUser(updated);
+        localStorage.setItem('user', JSON.stringify(updated));
+      } else {
+        console.error('[avatar] upload falhou:', res.status, await res.text());
+      }
+    } catch (err) {
+      console.error('[avatar] erro inesperado:', err);
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [user]);
 
   const isLogin = pathname === '/login';
   const isAdmin = user?.role === 'ADMIN';
@@ -172,13 +270,42 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               ))}
             </nav>
             <div className="nav-footer">
-              <button ref={userBtn} className="nav-user" aria-expanded={menuOpen} onClick={e => { e.stopPropagation(); setMenuOpen(m => !m); }}>
-                <span className="nav-user-avatar">{initials(user?.name)}</span>
-                <span className="nav-user-copy">
-                  <span className="nav-user-name">{user?.name ?? '—'}</span>
-                  <span className="nav-user-email">{user?.email ?? ''}</span>
-                </span>
-              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+              {open ? (
+                /* Card expandido — estilo NEXO */
+                <div className="nav-user-card">
+                  <button
+                    className="nav-user-photo-wrap"
+                    onClick={() => avatarInputRef.current?.click()}
+                    title={avatarUploading ? 'A carregar…' : 'Alterar foto de perfil'}
+                    style={{ opacity: avatarUploading ? 0.6 : 1 }}
+                  >
+                    {user?.avatarUrl
+                      ? <img src={user.avatarUrl.startsWith('data:') ? user.avatarUrl : `${process.env.NEXT_PUBLIC_API_URL ?? ''}${user.avatarUrl}`} alt={user?.name} className="nav-user-photo-img" />
+                      : <span className="nav-user-photo-initials">{initials(user?.name)}</span>}
+                    <span className="nav-user-photo-overlay">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                    </span>
+                  </button>
+                  <div className="nav-user-card-greeting">Olá, {user?.name?.split(' ')[0] ?? '—'}</div>
+                  <div className="nav-user-card-role">{user?.role === 'ADMIN' ? 'Administrador' : 'Analista'} · IPMA</div>
+                  <button ref={userBtn} className="nav-user-card-menu" aria-expanded={menuOpen} onClick={e => { e.stopPropagation(); setMenuOpen(m => !m); }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                /* Vista rail — só avatar */
+                <button ref={userBtn} className="nav-user nav-user--rail" aria-expanded={menuOpen} onClick={e => { e.stopPropagation(); setMenuOpen(m => !m); }}>
+                  {user?.avatarUrl
+                    ? <img src={user.avatarUrl.startsWith('data:') ? user.avatarUrl : `${process.env.NEXT_PUBLIC_API_URL ?? ''}${user.avatarUrl}`} alt={user?.name} className="nav-user-avatar nav-user-avatar--photo" />
+                    : <span className="nav-user-avatar">{initials(user?.name)}</span>}
+                </button>
+              )}
             </div>
           </aside>
 
@@ -191,15 +318,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Svg><polyline points="9 18 15 12 9 6" /></Svg>
               <span aria-current="page">{crumbFor(pathname)}</span>
             </nav>
-            {user?.name && (
-              <span className="topbar-greeting">Olá, {user.name}!</span>
-            )}
             <div className="topbar-right">
               <span className="topbar-meta">{now}</span>
               <button className="topbar-icon-btn" onClick={toggleTheme} title="Alternar tema">
                 <Svg><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></Svg>
               </button>
-              <button className="btn btn-primary btn-sm" onClick={() => go('/comunicados/novo')}>
+              <button className="btn btn-terra btn-sm" onClick={() => go('/comunicados/novo')}>
                 <Svg style={{ width: 12, height: 12 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Svg>
                 Novo Comunicado
               </button>
@@ -238,6 +362,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Terminar sessão
             </button>
           </div>
+        )}
+
+        {cropFile && (
+          <AvatarCropModal
+            file={cropFile}
+            onConfirm={handleCropConfirm}
+            onCancel={() => setCropFile(null)}
+          />
         )}
       </body>
     </html>

@@ -11,13 +11,17 @@ Arranca tudo o que é preciso para ter a plataforma em http://localhost:3000:
   5. UI Next.js no porto 3000
 
 Uso:
-    py scripts/start-local.py                     # arranque normal
-    py scripts/start-local.py --no-browser        # sem abrir browser
-    py scripts/start-local.py --infra-only        # só o container postgres
-    py scripts/start-local.py --reset-db          # apaga volumes e recomeça
-    py scripts/start-local.py --skip-install      # salta o npm install
-    py scripts/start-local.py --docker            # tudo via Docker Compose
-    py scripts/start-local.py --stop              # pára os containers
+    py scripts/start-local.py                          # arranque normal (só postgres via Docker)
+    py scripts/start-local.py --no-browser             # sem abrir browser
+    py scripts/start-local.py --infra-only             # só o container postgres
+    py scripts/start-local.py --reset-db               # apaga volumes e recomeça
+    py scripts/start-local.py --skip-install           # salta o npm install
+    py scripts/start-local.py --docker                 # tudo via Docker (postgres + api + ui)
+    py scripts/start-local.py --docker --profile backup  # inclui backups automáticos
+    py scripts/start-local.py --stop                   # pára os containers
+
+Profiles Docker disponíveis (usar com --docker):
+    backup   — pg_dump de 6 em 6 horas (não necessário em dev)
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ IS_WINDOWS          = platform.system() == "Windows"
 DOCKER_DESKTOP_WIN  = Path(r"C:\Program Files\Docker\Docker\Docker Desktop.exe")
 _CMD_EXT            = ".cmd" if IS_WINDOWS else ""
 
-API_PORT = 3001
+API_PORT = 3002   # relido após ensure_env() em main()
 UI_PORT  = 3000
 
 COMPOSE_ENV = {
@@ -399,11 +403,16 @@ def start_dev(open_browser: bool) -> None:
 # 8. Modo Docker Compose completo
 # ---------------------------------------------------------------------------
 
-def start_docker_compose() -> None:
+def start_docker_compose(profiles: list[str]) -> None:
+    profile_flags: list[str] = []
+    for p in profiles:
+        profile_flags += ["--profile", p]
+    if profiles:
+        cprint("cyan", f"  Profiles activos: {', '.join(profiles)}")
     cprint("yellow", f"  {SYM_WARN} docker compose up --build  (Ctrl+C para parar)")
     try:
         proc = subprocess.Popen(
-            ["docker", "compose", "up", "--build"],
+            ["docker", "compose"] + profile_flags + ["up", "--build"],
             cwd=PROJECT_ROOT, env=compose_env(),
         )
         proc.wait()
@@ -423,6 +432,8 @@ def main() -> int:
     parser.add_argument("--skip-install",  action="store_true", help="Saltar npm install")
     parser.add_argument("--skip-db",       action="store_true", help="Saltar prisma push e seed")
     parser.add_argument("--docker",        action="store_true", help="Tudo via Docker Compose (produção local)")
+    parser.add_argument("--profile",       action="append",     metavar="PROFILE", default=[],
+                        help="Activar profile Docker extra (ex: --profile backup). Repetível.")
     parser.add_argument("--stop",          action="store_true", help="Parar containers e sair")
     args = parser.parse_args()
 
@@ -441,12 +452,16 @@ def main() -> int:
         print("\n[1/2] Docker...")
         ensure_docker()
         print("\n[2/2] A arrancar stack completo...")
-        start_docker_compose()
+        start_docker_compose(profiles=args.profile)
         return 0
 
     # ── modo dev (processos directos) ─────────────────────────────────────
     print("\n[1/5] Verificacoes...")
     ensure_env()
+    # reler as portas do .env (pode sobrepor os defaults acima)
+    global API_PORT, UI_PORT
+    API_PORT = int(os.environ.get("PORT", API_PORT))
+    UI_PORT  = int(os.environ.get("UI_PORT", UI_PORT))
     ensure_node()
     ensure_docker()
 

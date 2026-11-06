@@ -16,10 +16,27 @@ const LISTA_LABELS: Record<string, string> = {
   LIM: 'Institucional Madeira', LGC: 'Geral Continente', LIC: 'Institucional Continente',
 };
 
+/*********************************************************************************************************************
+* @method       Icon
+* @description  Minimal inline SVG icon component that renders a single path element with the IPMA
+*               platform stroke style: rounded line caps, 1.75px stroke width, no fill.
+* @param        d — SVG path data string
+* @param        size — icon width and height in pixels (default 16)
+* @return       SVG element
+*********************************************************************************************************************/
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 }
 
+/*********************************************************************************************************************
+* @method       ComunicadoPage
+* @description  Detail page for a single seismic bulletin. Displays three tabs — event information,
+*               version history with PDF and email-preview access, and per-version delivery records.
+*               Supports inline state transitions (activate, archive, cancel), website publication /
+*               removal, and a modal for sending a specific version to distribution lists.
+* @return       JSX element — the bulletin detail page
+* @uses         useRouter, useParams, comunicadosApi, deliveryApi, abrirPdf, MapaSismos
+*********************************************************************************************************************/
 export default function ComunicadoPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();

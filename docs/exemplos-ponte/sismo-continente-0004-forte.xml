@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exemplo PONTE — Template 0004: Comunicado V (Continente, sismo forte)
+  Intensidade V — o template mais detalhado; inclui macrossísmica completa.
+-->
+<report
+  creating-user="ponte-test"
+  creating-authority="IPMA/CSEM"
+  creation-time="2026-10-30T16:45:00">
+
+  <event
+    templateID="0004"
+    firstPage="true"
+    active="true">
+
+    <areaName>Continente</areaName>
+    <eventDateTime>2026-10-30T16:31:00</eventDateTime>
+    <lat>37.9100</lat>
+    <lon>-8.7600</lon>
+    <depth>12</depth>
+    <magnitud>5.1</magnitud>
+    <local>Setúbal</local>
+    <intmax>V</intmax>
+    <regiao_intmax>Setúbal e Palmela</regiao_intmax>
+    <info_macross_adicional>Sentido com forte intensidade. Queda de objetos em prateleiras. Fissuras menores em paredes antigas. Populações saíram temporariamente dos edifícios.</info_macross_adicional>
+    <klmLinks>https://www.ipma.pt/pt/geofisica/sismos/?sismo=20261030-163100-cont</klmLinks>
+    <smsKey>LGC LIC</smsKey>
+    <emailKey>LGC LIC</emailKey>
+  </event>
+</report>

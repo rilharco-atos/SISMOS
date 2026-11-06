@@ -11,10 +11,17 @@ for (const key of REQUIRED_ENV) {
   }
 }
 
-/** Arranque como servidor permanente (desenvolvimento, Docker, servidores do IPMA). */
+/*********************************************************************************************************************
+* @method       bootstrap
+* @description  Starts the NestJS application as a long-running HTTP server for development,
+*               Docker and on-premises IPMA deployments. Listens on the PORT environment variable
+*               (default 3001) and enables graceful shutdown hooks.
+* @return       Promise resolving when the server is listening
+* @uses         NestFactory.create, configurarApp, criarLogger, usarLogJson
+*********************************************************************************************************************/
 async function bootstrap() {
   const logger = criarLogger();
-  const app = await NestFactory.create(AppModule, logger ? { logger } : {});
+  const app = await NestFactory.create(AppModule, { ...(logger ? { logger } : {}), bodyParser: false });
   configurarApp(app);
   app.enableShutdownHooks();
 

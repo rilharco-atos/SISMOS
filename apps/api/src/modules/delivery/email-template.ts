@@ -10,7 +10,13 @@ const FUNDO = '#EAF0FA';
 const LINHA = '#DCE1EE';
 const FONTE = "Raleway, 'Segoe UI', Arial, sans-serif";
 
-/** Escapa texto para inserção segura em HTML. */
+/*********************************************************************************************************************
+* @method       escapeHtml
+* @description  Escapes text for safe insertion into HTML attributes and content. Converts the five
+*               special HTML characters to their entity equivalents.
+* @param        s — any value; converted to string via String(s ?? '')
+* @return       Escaped HTML-safe string
+*********************************************************************************************************************/
 export function escapeHtml(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
@@ -24,10 +30,16 @@ function paragrafos(texto: string): string {
     .join('');
 }
 
-/**
- * Corpo HTML do email, com a mesma estrutura do PDF. Construído em tabelas com estilos inline
- * para ser compatível com Outlook; logótipo e mapa são referenciados por CID (anexos inline).
- */
+/*********************************************************************************************************************
+* @method       construirEmailHtml
+* @description  Builds the HTML body of the bulletin email using the same structure as the PDF.
+*               Constructed with inline table styles for Outlook compatibility. The logo and intensity
+*               map are referenced by CID (inline attachments).
+* @param        d — DocumentoComunicado with all bulletin data
+* @param        opts — flags indicating whether logo and map attachments are available
+* @return       Complete HTML document string ready to send as the email body
+* @uses         escapeHtml, paragrafos, linhasEvento, subtituloDocumento
+*********************************************************************************************************************/
 export function construirEmailHtml(d: DocumentoComunicado, opts: { temLogo: boolean; temMapa: boolean }): string {
   const linhas = linhasEvento(d)
     .map(([k, v]) => `<tr>
@@ -69,7 +81,14 @@ export function construirEmailHtml(d: DocumentoComunicado, opts: { temLogo: bool
 </body></html>`;
 }
 
-/** Versão em texto simples (clientes que não mostram HTML). */
+/*********************************************************************************************************************
+* @method       construirEmailTexto
+* @description  Builds the plain-text fallback version of the bulletin email for clients that do not
+*               render HTML. Includes all event data lines, body text and footer.
+* @param        d — DocumentoComunicado with all bulletin data
+* @return       Plain-text string formatted for email plain-text parts
+* @uses         linhasEvento, subtituloDocumento
+*********************************************************************************************************************/
 export function construirEmailTexto(d: DocumentoComunicado): string {
   return [
     d.titulo.toUpperCase(),

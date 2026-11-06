@@ -15,10 +15,25 @@ const ESTADO_BADGE: Record<string, string> = {
   ENVIADO: 'badge badge-info', CANCELADO: 'badge badge-danger', ARQUIVADO: 'badge',
 };
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+/*********************************************************************************************************************
+* @method       Svg
+* @description  Minimal SVG wrapper that renders a viewBox="0 0 24 24" element around any child
+*               path or shape nodes, used for inline icon rendering throughout the page.
+* @param        children — SVG child elements (path, polyline, circle, line, etc.)
+* @return       SVG element
+*********************************************************************************************************************/
 function Svg({ children }: { children: React.ReactNode }) {
   return <svg viewBox="0 0 24 24">{children}</svg>;
 }
 
+/*********************************************************************************************************************
+* @method       dataUtc
+* @description  Formats an ISO 8601 date string into a day label and an HH:MM UTC time label using
+*               the UTC clock, suitable for display in bulletin tables where event times are always UTC.
+* @param        d — optional ISO 8601 date string
+* @return       object with dia (e.g. "15 Out 2026") and hora (e.g. "14:32 UTC") fields
+*********************************************************************************************************************/
 function dataUtc(d?: string) {
   if (!d) return { dia: '—', hora: '' };
   const x = new Date(d);
@@ -28,10 +43,25 @@ function dataUtc(d?: string) {
   };
 }
 
+/*********************************************************************************************************************
+* @method       pct
+* @description  Formats a ratio (0–1) as a percentage string with one decimal place, returning '—'
+*               for null or undefined values.
+* @param        v — ratio value (0 = 0%, 1 = 100%), or null/undefined
+* @return       formatted percentage string (e.g. "98.7%") or '—'
+*********************************************************************************************************************/
 function pct(v: number | null | undefined) {
   return v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 }
 
+/*********************************************************************************************************************
+* @method       Entrega
+* @description  Renders a compact delivery status badge for a set of email or SMS dispatch records.
+*               Shows a failure count in red when any dispatch failed, a success count in green when
+*               all succeeded, or a dash when there are no dispatch records.
+* @param        envios — array of email or SMS delivery records with totalEnviado and totalFalha fields
+* @return       JSX span element with coloured delivery summary
+*********************************************************************************************************************/
 function Entrega({ envios }: { envios: any[] }) {
   if (!envios.length) return <span className="delivery-na">—</span>;
   const enviados = envios.reduce((s, e) => s + (e.totalEnviado ?? 0), 0);
@@ -40,6 +70,14 @@ function Entrega({ envios }: { envios: any[] }) {
   return <span className="delivery-ok">✓ {enviados}</span>;
 }
 
+/*********************************************************************************************************************
+* @method       exportarCsv
+* @description  Generates a UTF-8 BOM CSV file from the current bulletin list and triggers a browser
+*               download. Columns: Referência, Template, Área, Estado, Título, Local, Magnitude,
+*               Data evento (UTC), Versões. Fields are double-quote escaped.
+* @param        items — array of bulletin objects from the API
+* @return       void — triggers a file download as a side effect
+*********************************************************************************************************************/
 function exportarCsv(items: any[]) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const linhas = [
@@ -54,6 +92,16 @@ function exportarCsv(items: any[]) {
   URL.revokeObjectURL(url);
 }
 
+/*********************************************************************************************************************
+* @method       DashboardPage
+* @description  Operational dashboard for the IPMA Comunicados Sismológicos platform. Displays six
+*               KPI tiles (bulletins this month, pending review, email and SMS delivery rates,
+*               maximum magnitude, and automatic ingests in 24h), a table of the five most recent
+*               bulletins, a system health alert when any component is degraded, and an optional full
+*               seismic event map modal for all bulletins with location data.
+* @return       JSX element — the dashboard page
+* @uses         useRouter, comunicadosApi, abrirPdf, systemApi, MapaSismos, dataUtc, pct, Entrega, exportarCsv
+*********************************************************************************************************************/
 export default function DashboardPage() {
   const router = useRouter();
   const [kpis, setKpis] = useState<any>(null);

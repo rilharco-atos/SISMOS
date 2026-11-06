@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exemplo PONTE — Template 0003: Comunicado II-IV (Madeira, com macrossísmica)
+  Inclui intmax, regiao_intmax e info_macross_adicional.
+-->
+<report
+  creating-user="ponte-test"
+  creating-authority="IPMA/CSEM"
+  creation-time="2026-10-30T14:30:00">
+
+  <event
+    templateID="0003"
+    firstPage="true"
+    active="true">
+
+    <areaName>Madeira</areaName>
+    <eventDateTime>2026-10-30T14:12:00</eventDateTime>
+    <lat>32.6500</lat>
+    <lon>-16.9200</lon>
+    <depth>15</depth>
+    <magnitud>3.9</magnitud>
+    <local>Funchal</local>
+    <intmax>III</intmax>
+    <regiao_intmax>Funchal e arredores</regiao_intmax>
+    <info_macross_adicional>Sentido pela maioria da população. Alguns objetos oscilaram. Sem danos reportados.</info_macross_adicional>
+    <klmLinks></klmLinks>
+    <smsKey>LGM LIM</smsKey>
+    <emailKey>LGM LIM</emailKey>
+  </event>
+</report>

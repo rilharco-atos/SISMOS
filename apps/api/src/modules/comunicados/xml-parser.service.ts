@@ -27,10 +27,31 @@ export interface XmlEventData {
   creatingUser: string;
   creatingAuthority: string;
   creationTime: string;
-  /** true quando o XML traz informação macrossísmica (formato da atualização manual). */
   temInfoMacrossismica: boolean;
 }
 
+/***********************************************************************************************************************
+* @class         XmlParserService
+* @description   Injectable NestJS service that parses and validates the IPMA seismic XML format
+*                deposited on the FTP server by the Operations Centre. Used for both the automated
+*                polling flow and the manual XML upload flow.
+*
+* @responsibilities
+*                 - Parse XML strings using fast-xml-parser with strict configuration
+*                 - Validate all mandatory fields (coordinates, magnitude, datetime, templateId)
+*                 - Reject XML with DOCTYPE/ENTITY declarations (XXE protection)
+*                 - Convert the wall-clock eventDateTime to UTC using the area's timezone
+*                 - Extract dispatch list keys from smsKey and emailKey fields
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Validation is accumulative: all errors are collected before throwing.
+*                 - Template IDs are zero-padded to 4 digits; only 0000–0007 are valid.
+*                 - The XML attribute @_firstPage defaults to true; @_active defaults to true unless explicitly "false".
+***********************************************************************************************************************/
 @Injectable()
 export class XmlParserService {
   private parser = new XMLParser({
@@ -43,10 +64,15 @@ export class XmlParserService {
     htmlEntities: false,
   });
 
-  /**
-   * Lê o XML do Centro de Operações (automático ou carregado pelo analista) e valida os campos.
-   * Lança BadRequestException com a lista de problemas encontrados.
-   */
+  /*********************************************************************************************************************
+  * @method       parse
+  * @description  Parses and validates a raw UTF-8 seismic XML string. Rejects empty input, oversized
+  *               files, DOCTYPE/ENTITY declarations, and malformed XML. Accumulates all field errors
+  *               and throws a single BadRequestException with the full list.
+  * @param        xml — raw UTF-8 XML string from the FTP deposit or manual upload
+  * @return       XmlEventData value object with all validated event fields
+  * @uses         zoneForArea, wallTimeToUtc, XmlParserService.listas
+  *********************************************************************************************************************/
   parse(xml: string): XmlEventData {
     if (!xml?.trim()) throw new BadRequestException('Ficheiro XML vazio');
     if (Buffer.byteLength(xml, 'utf-8') > MAX_XML_BYTES) throw new BadRequestException('Ficheiro XML demasiado grande');
@@ -112,6 +138,16 @@ export class XmlParserService {
     };
   }
 
+  /*********************************************************************************************************************
+  * @method       listas
+  * @description  Parses a whitespace/comma/semicolon-separated list of dispatch list keys, validates
+  *               each against the ListaKey enum, accumulates errors for unknown keys, and returns
+  *               the deduplicated set of valid keys.
+  * @param        valor — raw string from the smsKey or emailKey XML element
+  * @param        campo — field name for error messages ("smsKey" or "emailKey")
+  * @param        erros — accumulator array for validation errors
+  * @return       Deduplicated array of valid ListaKey values
+  *********************************************************************************************************************/
   private listas(valor: string, campo: string, erros: string[]): ListaKey[] {
     if (!valor) return [];
     const keys = valor.split(/[\s,;]+/).filter(Boolean).map(k => k.toUpperCase());

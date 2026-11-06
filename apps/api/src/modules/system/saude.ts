@@ -12,7 +12,17 @@ export interface AvaliacaoComponente {
 const HORA = 60 * 60 * 1000;
 const t = (s?: string) => (s ? new Date(s).getTime() : 0);
 
-/** FTP: erro se a última tentativa falhou; degradado se não há sucesso há mais de 5 intervalos. */
+/*********************************************************************************************************************
+* @method       avaliarFtp
+* @description  Evaluates the health of the FTP polling subsystem. Returns 'desativado' when not
+*               configured, 'sem_dados' before the first poll attempt, 'erro' when the last attempt
+*               failed, and 'degradado' when no successful poll has occurred within 5 polling intervals.
+* @param        e — current EstadoComponente for the FTP component (may be undefined before first poll)
+* @param        configurado — whether the FTP server is configured
+* @param        intervaloMs — configured polling interval in milliseconds
+* @param        agora — reference timestamp (default: Date.now())
+* @return       AvaliacaoComponente with estado, mensagem and last success/error timestamps
+*********************************************************************************************************************/
 export function avaliarFtp(e: EstadoComponente | undefined, configurado: boolean, intervaloMs: number, agora = Date.now()): AvaliacaoComponente {
   if (!configurado) return { estado: 'desativado', mensagem: 'Servidor FTP não configurado' };
   if (!e || (!e.ultimoSucesso && !e.ultimoErro)) return { estado: 'sem_dados', mensagem: 'Ainda sem polling' };
@@ -22,7 +32,15 @@ export function avaliarFtp(e: EstadoComponente | undefined, configurado: boolean
   return { ...base, estado: 'ok' };
 }
 
-/** Envio: degradado se o último envio teve falhas nas últimas 24 h. */
+/*********************************************************************************************************************
+* @method       avaliarEnvio
+* @description  Evaluates the health of the email/SMS dispatch subsystem. Returns 'sem_dados' before
+*               the first dispatch attempt, 'degradado' when the most recent dispatch failed within the
+*               last 24 hours, and 'ok' otherwise.
+* @param        e — current EstadoComponente for the dispatch component (may be undefined at startup)
+* @param        agora — reference timestamp (default: Date.now())
+* @return       AvaliacaoComponente with estado, mensagem and last success/error timestamps
+*********************************************************************************************************************/
 export function avaliarEnvio(e: EstadoComponente | undefined, agora = Date.now()): AvaliacaoComponente {
   if (!e || (!e.ultimoSucesso && !e.ultimoErro)) return { estado: 'sem_dados', mensagem: 'Sem envios desde o arranque' };
   const base = { ultimoSucesso: e.ultimoSucesso, ultimoErro: e.ultimoErro };
@@ -30,7 +48,16 @@ export function avaliarEnvio(e: EstadoComponente | undefined, agora = Date.now()
   return { ...base, estado: 'ok' };
 }
 
-/** Website: erro se a última operação falhou. */
+/*********************************************************************************************************************
+* @method       avaliarWebsite
+* @description  Evaluates the health of the website integration. Returns 'desativado' when the
+*               integration is not active, 'sem_dados' before the first operation, 'erro' when the
+*               last operation failed, and 'ok' otherwise.
+* @param        e — current EstadoComponente for the website component (may be undefined at startup)
+* @param        ativa — whether the website integration is currently enabled
+* @param        motivo — optional explanation string for the 'desativado' state
+* @return       AvaliacaoComponente with estado, mensagem and last success/error timestamps
+*********************************************************************************************************************/
 export function avaliarWebsite(e: EstadoComponente | undefined, ativa: boolean, motivo?: string): AvaliacaoComponente {
   if (!ativa) return { estado: 'desativado', mensagem: motivo };
   if (!e || (!e.ultimoSucesso && !e.ultimoErro)) return { estado: 'sem_dados' };
@@ -38,7 +65,17 @@ export function avaliarWebsite(e: EstadoComponente | undefined, ativa: boolean, 
   return t(e.ultimoErro) > t(e.ultimoSucesso) ? { ...base, estado: 'erro', mensagem: e.mensagemErro } : { ...base, estado: 'ok' };
 }
 
-/** Backups: degradado se o mais recente for mais antigo que o limite (ou inexistente em produção). */
+/*********************************************************************************************************************
+* @method       avaliarBackup
+* @description  Evaluates the health of the backup subsystem based on the age of the most recent backup.
+*               Returns 'sem_dados' (non-production) or 'degradado' (production) when no backup exists,
+*               and 'degradado' when the most recent backup is older than maxIdadeHoras.
+* @param        ultimo — timestamp of the most recent backup, or null when none exists
+* @param        maxIdadeHoras — maximum acceptable backup age in hours
+* @param        producao — whether the system is running in production (affects the no-backup state)
+* @param        agora — reference timestamp (default: Date.now())
+* @return       AvaliacaoComponente with estado, mensagem and ultimoSucesso timestamp
+*********************************************************************************************************************/
 export function avaliarBackup(ultimo: Date | null, maxIdadeHoras: number, producao: boolean, agora = Date.now()): AvaliacaoComponente {
   if (!ultimo) return { estado: producao ? 'degradado' : 'sem_dados', mensagem: 'Nenhum backup encontrado' };
   const horas = (agora - ultimo.getTime()) / HORA;
@@ -48,7 +85,15 @@ export function avaliarBackup(ultimo: Date | null, maxIdadeHoras: number, produc
     : { ...base, estado: 'ok' };
 }
 
-/** Estado global: "down" sem base de dados; "degraded" se algum componente está em erro ou degradado. */
+/*********************************************************************************************************************
+* @method       estadoGlobal
+* @description  Computes the overall system health status from the DB connectivity flag and the
+*               individual component evaluations. Returns 'down' when the DB is unreachable, 'degraded'
+*               when any component is in error or degradado, and 'ok' otherwise.
+* @param        db — whether the database connection is healthy
+* @param        componentes — array of individual component evaluations
+* @return       'ok', 'degraded' or 'down'
+*********************************************************************************************************************/
 export function estadoGlobal(db: boolean, componentes: AvaliacaoComponente[]): 'ok' | 'degraded' | 'down' {
   if (!db) return 'down';
   return componentes.some(c => c.estado === 'erro' || c.estado === 'degradado') ? 'degraded' : 'ok';

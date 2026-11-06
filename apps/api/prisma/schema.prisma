@@ -52,6 +52,7 @@ model User {
   passwordHash String
   role         UserRole   @default(ANALISTA)
   active       Boolean    @default(true)
+  avatarUrl    String?
   criadoEm    DateTime   @default(now())
   atualizadoEm DateTime  @updatedAt
 
@@ -255,5 +256,7 @@ model SystemConfig {
   emailRemetente    String   @default("IPMA — Serviço de Sismologia")
   assinaturaTecnica String   @default("Instituto Português do Mar e da Atmosfera, I.P.")
   fusoHorario       String   @default("UTC")
+  /// Chave de API para ingestão de XML via PONTE (POST /ingest/xml). Gerada no backoffice; nunca devolvida em claro.
+  ingestApiKey      String   @default("")
   atualizadoEm      DateTime @updatedAt
 }

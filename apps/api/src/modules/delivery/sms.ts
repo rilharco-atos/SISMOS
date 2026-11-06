@@ -2,7 +2,13 @@ import { formatInZone, zoneForArea } from '../../common/tz.util';
 
 export const SMS_MAX_CHARS = 140;
 
-/** Remove acentos e símbolos fora do ASCII imprimível (regra do protocolo SMS do IPMA). */
+/*********************************************************************************************************************
+* @method       removerAcentos
+* @description  Strips diacritics and non-ASCII printable characters from a string. Required by the
+*               IPMA SMS protocol which only allows ASCII printable characters (0x20–0x7e).
+* @param        s — input string with potential accented or non-ASCII characters
+* @return       ASCII-safe string with diacritics removed
+*********************************************************************************************************************/
 export function removerAcentos(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7e]/g, '');
 }
@@ -14,11 +20,15 @@ export interface SmsDados {
   magnitude?: number | string | null;
 }
 
-/**
- * Mensagem SMS automática, não editável, no formato do exemplo fornecido pelo IPMA:
- * "Inf. Prelim. Sismo: Acores Data: 2026Set08 16:41 Epicentro: <local> Magnitude: 3.0".
- * Se exceder o limite, é o epicentro que é encurtado (a magnitude nunca é cortada).
- */
+/*********************************************************************************************************************
+* @method       construirSms
+* @description  Builds the automatic SMS message in the IPMA-specified format:
+*               "Inf. Prelim. Sismo: Acores Data: 2026Set08 16:41 Epicentro: <local> Magnitude: 3.0".
+*               The epicentre is truncated if the message exceeds 140 characters; magnitude is never cut.
+* @param        d — SmsDados with area name, event date, epicentre and magnitude
+* @return       ASCII-safe SMS string of at most 140 characters
+* @uses         removerAcentos, formatInZone, zoneForArea
+*********************************************************************************************************************/
 export function construirSms(d: SmsDados): string {
   const area = d.areaName ?? '';
   const data = d.eventDateTime ? ` Data: ${formatInZone(new Date(d.eventDateTime), zoneForArea(area), 'sms')}` : '';

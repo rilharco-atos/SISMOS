@@ -15,10 +15,24 @@ const ESTADO_BADGE: Record<string, string> = {
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const MESES_LONGOS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+/*********************************************************************************************************************
+* @method       Svg
+* @description  Minimal SVG wrapper that renders a viewBox="0 0 24 24" element around any child
+*               path or shape nodes, used for inline icon rendering throughout the page.
+* @param        children — SVG child elements (path, polyline, circle, line, etc.)
+* @return       SVG element
+*********************************************************************************************************************/
 function Svg({ children }: { children: React.ReactNode }) {
   return <svg viewBox="0 0 24 24">{children}</svg>;
 }
 
+/*********************************************************************************************************************
+* @method       ultimosMeses
+* @description  Generates an ordered list of the last N calendar months in UTC, from most recent to
+*               oldest, each as a { value, label } pair for use in filter dropdowns.
+* @param        n — number of months to generate (e.g. 24)
+* @return       array of { value: "YYYY-MM", label: "Mês YYYY" } objects, most recent first
+*********************************************************************************************************************/
 function ultimosMeses(n: number) {
   const out: { value: string; label: string }[] = [];
   const d = new Date();
@@ -29,6 +43,13 @@ function ultimosMeses(n: number) {
   return out;
 }
 
+/*********************************************************************************************************************
+* @method       dataUtc
+* @description  Formats an ISO 8601 date string into a day label and an HH:MM UTC time label using
+*               the UTC clock, suitable for display in bulletin tables where event times are always UTC.
+* @param        d — optional ISO 8601 date string
+* @return       object with dia (e.g. "15 Out 2026") and hora (e.g. "14:32 UTC") fields
+*********************************************************************************************************************/
 function dataUtc(d?: string) {
   if (!d) return { dia: '—', hora: '' };
   const x = new Date(d);
@@ -38,6 +59,14 @@ function dataUtc(d?: string) {
   };
 }
 
+/*********************************************************************************************************************
+* @method       Entrega
+* @description  Renders a compact delivery status badge for a set of email or SMS dispatch records.
+*               Shows a failure count in red when any dispatch failed, a success count in green when
+*               all succeeded, or a dash when there are no dispatch records.
+* @param        envios — array of delivery records with totalEnviado and totalFalha fields
+* @return       JSX span element with coloured delivery summary
+*********************************************************************************************************************/
 function Entrega({ envios }: { envios: any[] }) {
   if (!envios.length) return <span className="delivery-na">—</span>;
   const enviados = envios.reduce((s, e) => s + (e.totalEnviado ?? 0), 0);
@@ -46,6 +75,14 @@ function Entrega({ envios }: { envios: any[] }) {
   return <span className="delivery-ok">✓ {enviados}</span>;
 }
 
+/*********************************************************************************************************************
+* @method       exportarCsv
+* @description  Generates a UTF-8 BOM CSV file from the current filtered bulletin list and triggers a
+*               browser download. Columns: Referência, Template, Área, Estado, Título, Local,
+*               Magnitude, Data evento (UTC), Versões. Fields are double-quote escaped.
+* @param        items — array of bulletin objects from the API
+* @return       void — triggers a file download as a side effect
+*********************************************************************************************************************/
 function exportarCsv(items: any[]) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const linhas = [
@@ -60,6 +97,14 @@ function exportarCsv(items: any[]) {
   URL.revokeObjectURL(url);
 }
 
+/*********************************************************************************************************************
+* @method       ComunicadosPage
+* @description  Full bulletin archive page with server-side filtering by free-text search, state,
+*               area and month, client-side pagination, CSV export, and an optional seismic event map
+*               modal. Debounces the search input by 300 ms to avoid excessive API calls.
+* @return       JSX element — the bulletins list page
+* @uses         useRouter, comunicadosApi, abrirPdf, MapaSismos, ultimosMeses, dataUtc, Entrega, exportarCsv
+*********************************************************************************************************************/
 export default function ComunicadosPage() {
   const router = useRouter();
   const meses = useMemo(() => ultimosMeses(24), []);
@@ -68,7 +113,7 @@ export default function ComunicadosPage() {
   const [search, setSearch] = useState('');
   const [estado, setEstado] = useState('');
   const [area, setArea] = useState('');
-  const [mes, setMes] = useState(''); // todos os meses por defeito
+  const [mes, setMes] = useState('');
   const [showMapa, setShowMapa] = useState(false);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 10;
@@ -83,7 +128,7 @@ export default function ComunicadosPage() {
       if (mes) params.set('mes', mes);
       const list = await comunicadosApi.list(params.toString());
       setItems(list);
-      setPagina(1); // reset ao primeiro filtro
+      setPagina(1);
     } catch { router.push('/login'); }
     setLoading(false);
   }, [search, estado, area, mes, router]);

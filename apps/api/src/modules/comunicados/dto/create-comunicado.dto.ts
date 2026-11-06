@@ -5,7 +5,24 @@ import { TEMPLATE_IDS } from '../templates';
 const AREAS = ['Continente', 'Açores', 'Madeira'];
 const MAX_XML = 256 * 1024;
 
-/** Dados de criação de um comunicado (formulário manual, com ou sem XML de origem). */
+/***********************************************************************************************************************
+* @class         CreateComunicadoDto
+* @description   Data transfer object for creating a new seismic bulletin via the manual form.
+*                Covers all bulletin fields including optional XML source for audit purposes.
+*
+* @responsibilities
+*                 - Validate mandatory fields: templateId, titulo and texto
+*                 - Validate optional seismic event fields with appropriate type and length constraints
+*                 - Validate that templateId and areaName are within the allowed enumerated values
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - xmlFonte is stored for audit purposes and limited to 256 KiB.
+*                 - emailListas and smsListas allow immediate dispatch from the creation flow.
+***********************************************************************************************************************/
 export class CreateComunicadoDto {
   @IsIn(TEMPLATE_IDS as unknown as string[]) templateId: string;
   @IsOptional() @IsBoolean() primeiraPagina?: boolean;
@@ -29,11 +46,26 @@ export class CreateComunicadoDto {
   @IsOptional() @IsBoolean() publicarWebsite?: boolean;
   @IsOptional() @IsArray() @ArrayUnique() @IsEnum(ListaKey, { each: true }) smsListas?: ListaKey[];
   @IsOptional() @IsArray() @ArrayUnique() @IsEnum(ListaKey, { each: true }) emailListas?: ListaKey[];
-  /** XML carregado pelo analista (substitui o antigo .csv); guardado para auditoria. */
   @IsOptional() @IsString() @MaxLength(MAX_XML) xmlFonte?: string;
 }
 
-/** Dados de uma nova versão (002, 003, …) de um comunicado existente. */
+/***********************************************************************************************************************
+* @class         NovaVersaoDto
+* @description   Data transfer object for creating a new content version (002, 003, …) of an existing
+*                bulletin. Titulo and texto are mandatory; all other fields update the bulletin metadata.
+*
+* @responsibilities
+*                 - Validate mandatory titulo and texto for the new version content
+*                 - Validate optional fields that override the base bulletin's metadata for this version
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - A new version generates a new PDF and resets the dispatch state for that version.
+*                 - Optional seismic fields allow correction of data errors in subsequent versions.
+***********************************************************************************************************************/
 export class NovaVersaoDto {
   @IsString() @IsNotEmpty() @MaxLength(300) titulo: string;
   @IsString() @IsNotEmpty() @MaxLength(20000) texto: string;
@@ -54,7 +86,23 @@ export class NovaVersaoDto {
   @IsOptional() @IsString() @MaxLength(MAX_XML) xmlFonte?: string;
 }
 
-/** Pedido de preenchimento de template com os dados do evento. */
+/***********************************************************************************************************************
+* @class         PreencherTemplateDto
+* @description   Data transfer object for requesting template pre-population with seismic event data.
+*                Returns suggested titulo and texto strings for the analyst to review and adjust.
+*
+* @responsibilities
+*                 - Validate templateId against the allowed template catalogue
+*                 - Validate optional event data fields used to populate the template placeholders
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - The returned text is a suggestion; analysts always review before creating the bulletin.
+*                 - eventDateTime is accepted as a string here and parsed to Date in the controller.
+***********************************************************************************************************************/
 export class PreencherTemplateDto {
   @IsIn(TEMPLATE_IDS as unknown as string[]) templateId: string;
   @IsOptional() @IsIn(AREAS) areaName?: string;

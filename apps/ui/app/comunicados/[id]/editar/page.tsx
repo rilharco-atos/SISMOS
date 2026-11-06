@@ -3,10 +3,27 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { comunicadosApi } from '../../../lib/api';
 
+/*********************************************************************************************************************
+* @method       Icon
+* @description  Minimal inline SVG icon component that renders a single path element with the IPMA
+*               platform stroke style: rounded line caps, 1.75px stroke width, no fill.
+* @param        d — SVG path data string
+* @param        size — icon width and height in pixels (default 16)
+* @return       SVG element
+*********************************************************************************************************************/
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 }
 
+/*********************************************************************************************************************
+* @method       EditarComunicadoPage
+* @description  Edit page for an existing seismic bulletin. Loads the bulletin by ID, allows updating
+*               the title, body text, image URL and website publication window, and optionally creates
+*               a new version (v+1) instead of overwriting the current one. Redirects to the detail
+*               page after a successful save.
+* @return       JSX element — the edit form page
+* @uses         useRouter, useParams, comunicadosApi
+*********************************************************************************************************************/
 export default function EditarComunicadoPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();

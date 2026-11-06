@@ -9,10 +9,15 @@ export type StorageDriver = 'disco' | 'bd';
 const CHAVE_VALIDA = /^(pdfs|imagens)\/[A-Za-z0-9._-]{1,128}$/;
 const RAIZ_DISCO = path.resolve('uploads');
 
-/**
- * Normaliza a referência guardada na base de dados para uma chave "pasta/ficheiro".
- * Aceita os formatos antigos ("uploads\pdfs\X.pdf", "/uploads/imagens/x.png") e a chave nova ("pdfs/X.pdf").
- */
+/*********************************************************************************************************************
+* @method       chaveDe
+* @description  Normalises a stored file reference to the canonical "pasta/ficheiro" key format.
+*               Accepts legacy formats with backslashes or absolute-like paths (e.g.
+*               "uploads\pdfs\X.pdf", "/uploads/imagens/x.png") and the new "pdfs/X.pdf" key form.
+* @param        ref — raw reference string as stored in the database, or null/undefined
+* @return       Canonical key string matching CHAVE_VALIDA, or null when the reference is absent
+*               or does not match the expected pattern
+*********************************************************************************************************************/
 export function chaveDe(ref: string | null | undefined): string | null {
   if (!ref) return null;
   const partes = ref.replace(/\\/g, '/').split('/').filter(Boolean);
@@ -21,17 +26,43 @@ export function chaveDe(ref: string | null | undefined): string | null {
   return CHAVE_VALIDA.test(chave) ? chave : null;
 }
 
-/** Driver ativo: STORAGE_DRIVER explícito; na Vercel (sem disco persistente) é sempre "bd". */
+/*********************************************************************************************************************
+* @method       resolverDriver
+* @description  Selects the active storage driver. Returns 'bd' when STORAGE_DRIVER is set to 'bd'
+*               or 'db', or when the VERCEL environment variable is present (serverless environments
+*               have no persistent local disk). Returns 'disco' otherwise.
+* @param        env — getter function that returns an environment variable value by key
+* @return       StorageDriver: 'bd' for database storage, 'disco' for local filesystem
+*********************************************************************************************************************/
 export function resolverDriver(env: (k: string) => string | undefined): StorageDriver {
   const v = (env('STORAGE_DRIVER') ?? '').toLowerCase();
   if (v === 'bd' || v === 'db' || env('VERCEL')) return 'bd';
   return 'disco';
 }
 
-/**
- * Armazenamento de PDFs e imagens: disco local (instalação no IPMA / Docker, pasta uploads/)
- * ou base de dados (funções serverless sem disco persistente). As chaves têm a forma "pdfs/X.pdf".
- */
+/***********************************************************************************************************************
+* @class         StorageService
+* @description   Injectable NestJS service for storing and retrieving PDF bulletins and images.
+*                Abstracts over two storage backends: local filesystem (Docker/IPMA on-premises
+*                installation) and database BLOB (Vercel and other serverless environments without
+*                persistent disk).
+*
+* @responsibilities
+*                 - Save binary content under a validated key of the form "pdfs/X.pdf" or "imagens/X.png"
+*                 - Retrieve stored content by key or by a legacy-format reference string
+*                 - Delete stored content by key or by a legacy-format reference string
+*                 - Select the backend driver from the environment at construction time
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - CHAVE_VALIDA enforces key format to prevent path traversal on the 'disco' driver.
+*                 - RAIZ_DISCO is resolved at module load time; the ler() method also checks that
+*                   the resolved file path stays inside RAIZ_DISCO before reading.
+*                 - The 'bd' driver stores content in the Ficheiro Prisma model.
+***********************************************************************************************************************/
 @Injectable()
 export class StorageService {
   readonly driver: StorageDriver;
@@ -40,6 +71,17 @@ export class StorageService {
     this.driver = driver ?? resolverDriver(k => process.env[k]);
   }
 
+  /*********************************************************************************************************************
+  * @method       guardar
+  * @description  Saves binary content to the active storage backend under the given key.
+  *               On disk, the necessary subdirectory is created if it does not exist.
+  *               In the database, the Ficheiro row is upserted.
+  * @param        chave — storage key in the form "pdfs/name.pdf" or "imagens/name.png"
+  * @param        conteudo — raw binary content as Buffer or Uint8Array
+  * @param        contentType — MIME type to store alongside the content (DB driver only)
+  * @return       Promise resolving to the key that was stored
+  * @uses         PrismaClient.ficheiro.upsert, fs.mkdirSync, fs.writeFileSync
+  *********************************************************************************************************************/
   async guardar(chave: string, conteudo: Buffer | Uint8Array, contentType: string): Promise<string> {
     if (!CHAVE_VALIDA.test(chave)) throw new Error(`Chave de ficheiro inválida: ${chave}`);
     const buf = Buffer.from(conteudo);
@@ -57,7 +99,15 @@ export class StorageService {
     return chave;
   }
 
-  /** Conteúdo do ficheiro, ou null se não existir. Aceita chaves no formato antigo. */
+  /*********************************************************************************************************************
+  * @method       ler
+  * @description  Returns the binary content and MIME type for a stored file, or null when not found.
+  *               Accepts both canonical keys and legacy-format reference strings via chaveDe().
+  *               On the disk driver, verifies the resolved path stays inside RAIZ_DISCO.
+  * @param        ref — key or legacy reference string, or null/undefined for absent references
+  * @return       Promise resolving to { conteudo, contentType } or null
+  * @uses         chaveDe, PrismaClient.ficheiro.findUnique, fs.existsSync, fs.readFileSync
+  *********************************************************************************************************************/
   async ler(ref: string | null | undefined): Promise<{ conteudo: Buffer; contentType: string } | null> {
     const chave = chaveDe(ref);
     if (!chave) return null;
@@ -70,6 +120,14 @@ export class StorageService {
     return { conteudo: fs.readFileSync(origem), contentType: chave.endsWith('.pdf') ? 'application/pdf' : chave.endsWith('.png') ? 'image/png' : 'image/jpeg' };
   }
 
+  /*********************************************************************************************************************
+  * @method       remover
+  * @description  Deletes a stored file from the active backend. Silently returns when the reference
+  *               is absent or does not match the expected pattern.
+  * @param        ref — key or legacy reference string, or null/undefined for absent references
+  * @return       Promise resolving to void
+  * @uses         chaveDe, PrismaClient.ficheiro.deleteMany, apagarFicheiro
+  *********************************************************************************************************************/
   async remover(ref: string | null | undefined): Promise<void> {
     const chave = chaveDe(ref);
     if (!chave) return;

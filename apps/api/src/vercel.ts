@@ -7,17 +7,35 @@ import { configurarApp, criarLogger } from './app.factory';
 
 let servidor: Promise<express.Express> | null = null;
 
-/** A aplicação Nest é criada uma vez por instância e reutilizada entre pedidos (Fluid Compute). */
+/*********************************************************************************************************************
+* @method       criarServidor
+* @description  Creates and initialises the NestJS application wrapped in a plain Express adapter
+*               for use in a Vercel serverless environment. Called once per serverless instance;
+*               the result is cached in the module-level servidor variable and reused across
+*               requests (Vercel Fluid Compute).
+* @return       Promise resolving to the configured Express application
+* @uses         NestFactory.create, ExpressAdapter, configurarApp, criarLogger
+*********************************************************************************************************************/
 async function criarServidor(): Promise<express.Express> {
   const app = express();
   const logger = criarLogger();
-  const nest = await NestFactory.create(AppModule, new ExpressAdapter(app), logger ? { logger } : {});
+  const nest = await NestFactory.create(AppModule, new ExpressAdapter(app), { ...(logger ? { logger } : {}), bodyParser: false });
   configurarApp(nest);
   await nest.init();
   return app;
 }
 
-/** Handler da função serverless (Vercel): todos os pedidos são reencaminhados para aqui. */
+/*********************************************************************************************************************
+* @method       handler
+* @description  Default export for the Vercel serverless function. Initialises the NestJS application
+*               on the first invocation and forwards all subsequent requests to the cached Express
+*               instance. Resets the cached promise on initialisation failure so the next request
+*               can retry.
+* @param        req — Node.js IncomingMessage from the Vercel runtime
+* @param        res — Node.js ServerResponse from the Vercel runtime
+* @return       Promise resolving when the request has been handed off to the Express app
+* @uses         criarServidor
+*********************************************************************************************************************/
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (!servidor) {
     servidor = criarServidor().catch(e => {

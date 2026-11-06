@@ -14,6 +14,31 @@ import { MetricsService, M } from '../observability/metrics.service';
 import { avaliarEnvioAutomatico } from '../comunicados/templates';
 import { apagarFicheiro } from '../../common/fs.util';
 
+/***********************************************************************************************************************
+* @class         PollingService
+* @description   Injectable NestJS service that polls an FTP server for incoming seismic bulletin XML files,
+*                parses them, creates bulletin records and optionally triggers automatic delivery. Implements
+*                OnModuleInit to create the required local staging directories on startup.
+*
+* @responsibilities
+*                 - Run a @Cron-scheduled tick every 5 seconds respecting the configured poll interval
+*                 - Connect to FTP, list and download pending XML files from the incoming directory
+*                 - Create bulletin records via ComunicadosService and archive processed files
+*                 - Optionally approve and deliver bulletins automatically when envioAutomatico is enabled
+*                 - Expose pollFtp() for manual triggering from SystemModule and PollingController
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - In Vercel environments SCHEDULER must be 'externo'; local dirs use os.tmpdir().
+*                 - The processing flag prevents concurrent polls from running simultaneously.
+*                 - Files are archived to the processed directory before delivery to ensure at-most-once import.
+*
+*               Notes for future enhancements:
+*                 - Add dead-letter handling for XML files that fail parsing repeatedly.
+***********************************************************************************************************************/
 @Injectable()
 export class PollingService implements OnModuleInit {
   private readonly logger = new Logger(PollingService.name);
@@ -29,19 +54,35 @@ export class PollingService implements OnModuleInit {
     private metrics: MetricsService,
   ) {}
 
-  /** "interno": cron no próprio processo (servidor permanente). "externo": chamado via GET /api/cron/polling (Vercel Cron, etc.). */
+  /*********************************************************************************************************************
+  * @method       agendamento
+  * @description  Read-only property indicating whether polling is scheduled internally via the in-process
+  *               @Cron or externally via HTTP from Vercel Cron or another scheduler.
+  * @return       'interno' for in-process cron; 'externo' for HTTP-triggered polling
+  *********************************************************************************************************************/
   get agendamento(): 'interno' | 'externo' {
     const v = (this.config.get<string>('SCHEDULER') ?? '').toLowerCase();
     if (v === 'interno' || v === 'externo') return v;
     return this.config.get('VERCEL') ? 'externo' : 'interno';
   }
 
-  /** Pastas locais para os XML descarregados; em ambientes com disco só de leitura usa a pasta temporária. */
+  /*********************************************************************************************************************
+  * @method       pasta
+  * @description  Returns the local directory path for FTP incoming or processed files. Uses a tmp-based
+  *               path in read-only environments (Vercel) and a local ftp/ subdirectory otherwise.
+  * @param        tipo — 'incoming' for files awaiting processing; 'processed' for archived files
+  * @return       Absolute path to the requested local FTP staging directory
+  *********************************************************************************************************************/
   private pasta(tipo: 'incoming' | 'processed'): string {
     const definida = this.config.get<string>(tipo === 'incoming' ? 'FTP_LOCAL_INCOMING_DIR' : 'FTP_LOCAL_PROCESSED_DIR');
     return definida ?? (this.config.get('VERCEL') ? path.join(os.tmpdir(), 'ftp', tipo) : path.join('.', 'ftp', tipo));
   }
 
+  /*********************************************************************************************************************
+  * @method       onModuleInit
+  * @description  NestJS lifecycle hook that creates the local incoming and processed FTP staging directories
+  *               on module startup. Logs a warning when a directory cannot be created.
+  *********************************************************************************************************************/
   onModuleInit() {
     for (const tipo of ['incoming', 'processed'] as const) {
       try {
@@ -52,7 +93,12 @@ export class PollingService implements OnModuleInit {
     }
   }
 
-  /** Verifica a cada 5 s; o polling efetivo respeita o intervalo configurado no backoffice. */
+  /*********************************************************************************************************************
+  * @method       tick
+  * @description  @Cron callback fired every 5 seconds. Skips when a poll is already in progress, when
+  *               agendamento is 'externo', or when the configured poll interval has not elapsed yet.
+  * @uses         SettingsService.ftp, PollingService.pollFtp
+  *********************************************************************************************************************/
   @Cron(CronExpression.EVERY_5_SECONDS)
   async tick() {
     if (this.processing || this.agendamento !== 'interno') return;
@@ -61,7 +107,20 @@ export class PollingService implements OnModuleInit {
     await this.pollFtp(ftpCfg);
   }
 
-  /** Lê os XML novos da pasta de entrada do FTP, cria os comunicados e arquiva os ficheiros. */
+  /*********************************************************************************************************************
+  * @method       pollFtp
+  * @description  Connects to the configured FTP server, lists XML files in the incoming directory,
+  *               downloads and processes each one, archives the file on both FTP and locally, and
+  *               optionally triggers automatic delivery. Returns a summary of the poll.
+  * @param        ftpCfg — optional pre-loaded FTP settings; loaded from SettingsService when absent
+  * @return       Object with origem string, ficheiros count and optional erro message
+  * @process      1. Guard against concurrent polls with the processing flag
+  *               2. Connect to FTP and list XML files in the incoming directory
+  *               3. For each file: download, strip BOM, parse, create bulletin, archive on FTP and locally
+  *               4. Trigger envioAutomatico() for each successfully imported bulletin
+  *               5. Archive rejected XML files with REJEITADO_ prefix; record in audit log
+  * @uses         ComunicadosService.createFromXml, PollingService.envioAutomatico, AuditService.log
+  *********************************************************************************************************************/
   async pollFtp(ftpCfg?: FtpSettings): Promise<{ origem: string; ficheiros: number; erro?: string }> {
     if (this.processing) return { origem: '', ficheiros: 0, erro: 'Já existe um polling em curso' };
     const cfg = ftpCfg ?? await this.settings.ftp();
@@ -98,7 +157,6 @@ export class PollingService implements OnModuleInit {
           const comunicado = await this.comunicados.createFromXml(xml, SYSTEM_USER_ID);
           this.logger.log(JSON.stringify({ msg: 'Comunicado importado via FTP', ficheiro: nome, referencia: comunicado.referencia }));
 
-          // O ficheiro é arquivado antes do envio: uma falha no envio não pode levar a reimportar o evento.
           await client.rename(remotePath, `${processedDir}/${nome}`).catch(() => client.remove(remotePath).catch(() => undefined));
           fs.renameSync(localPath, path.join(localProc, nome));
 
@@ -108,7 +166,6 @@ export class PollingService implements OnModuleInit {
         } catch (e: any) {
           this.metrics.inc(M.XML_PROCESSADOS, { resultado: e instanceof BadRequestException ? 'rejeitado' : 'erro' });
           if (e instanceof BadRequestException) {
-            // XML inválido não volta a ser processado: é arquivado com prefixo e fica registado.
             await client.rename(remotePath, `${processedDir}/REJEITADO_${nome}`).catch(() => undefined);
             apagarFicheiro(localPath);
             await this.audit.log({ userId: SYSTEM_USER_ID, acao: 'XML_REJEITADO', entidade: 'Ficheiro', entidadeId: nome, detalhes: { erro: e.message } });
@@ -128,7 +185,15 @@ export class PollingService implements OnModuleInit {
     return { origem: cfg.origem, ficheiros: processados, erro: erroGeral };
   }
 
-  /** Aprova e envia o comunicado automático se a configuração o permitir e o texto estiver completo. */
+  /*********************************************************************************************************************
+  * @method       envioAutomatico
+  * @description  Automatically approves and delivers a bulletin when the envioAutomatico setting is enabled
+  *               and the bulletin text passes the completeness check. Retains for manual review when the
+  *               check fails and records the outcome in the audit log.
+  * @param        comunicado — the newly imported bulletin object from ComunicadosService
+  * @param        ficheiro — source filename used in audit log entries
+  * @uses         SettingsService.envioAutomatico, ComunicadosService.aprovar, DeliveryService.enviarComunicado
+  *********************************************************************************************************************/
   async envioAutomatico(comunicado: any, ficheiro: string) {
     if (!(await this.settings.envioAutomatico())) return;
 

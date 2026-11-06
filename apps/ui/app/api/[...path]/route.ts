@@ -3,6 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 const API = (process.env.API_URL ?? 'http://localhost:3001').replace(/\/+$/, '');
 const BYPASS = process.env.API_BYPASS_SECRET ?? '';
 
+/*********************************************************************************************************************
+* @method       handler
+* @description  Next.js Route Handler that acts as a transparent reverse proxy from the UI to the
+*               NestJS API. Forwards the Authorization header, Content-Type and the optional Vercel
+*               protection bypass secret. Preserves content-type and content-disposition from the
+*               upstream response so file downloads and PDF streams work end to end.
+* @param        req — Next.js NextRequest with the incoming headers and body
+* @param        ctx — route context containing the dynamic path segments as a Promise
+* @return       NextResponse with the upstream HTTP status, headers and streaming body
+*********************************************************************************************************************/
 async function handler(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const url = `${API}/api/${path.join('/')}${req.nextUrl.search}`;

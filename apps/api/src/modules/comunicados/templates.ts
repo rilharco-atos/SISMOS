@@ -1,9 +1,5 @@
 import { formatInZone, zoneForArea } from '../../common/tz.util';
 
-/**
- * Templates de comunicado. Identificadores e textos reproduzidos exatamente como fornecidos
- * pelo IPMA (assessment funcional, secção 7). NÃO ALTERAR o conteúdo dos textos.
- */
 export const TEMPLATE_IDS = ['0000', '0001', '0002', '0003', '0004', '0005', '0006', '0007'] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
@@ -49,7 +45,6 @@ export const TEMPLATES: Record<TemplateId, { label: string; texto: string }> = {
   },
 };
 
-/** Designação da rede sísmica por área, usada no marcador [zona] ("Rede Sísmica do [zona]"). */
 const ZONA_POR_AREA: Record<string, string> = {
   Continente: 'Continente',
   'Açores': 'Arquipélago dos Açores',
@@ -68,15 +63,28 @@ export interface TemplateData {
 
 const MARCADOR_POR_PREENCHER = /\[[^\]\n]*\]|\{m\.m\]/;
 
-/** Marcadores que ficaram por preencher no texto (p.ex. "[--info macrossísmica detalhada--]"). */
+/*********************************************************************************************************************
+* @method       marcadoresPorPreencher
+* @description  Returns all unfilled template markers remaining in a texto string after
+*               preencherTemplate has run. Used to decide whether automatic dispatch is safe.
+* @param        texto — bulletin text to scan for unfilled markers
+* @return       Array of marker strings still present (e.g. ["[-- editar --]"])
+*********************************************************************************************************************/
 export function marcadoresPorPreencher(texto: string): string[] {
   return texto.match(new RegExp(MARCADOR_POR_PREENCHER, 'g')) ?? [];
 }
 
-/**
- * Decide se um comunicado criado pelo fluxo automático pode ser enviado sem revisão:
- * exige texto sem marcadores por preencher e pelo menos uma lista de destino.
- */
+/*********************************************************************************************************************
+* @method       avaliarEnvioAutomatico
+* @description  Determines whether an automatically ingested bulletin can be dispatched without human
+*               review. Returns false when the text still has unfilled markers, or when no dispatch
+*               lists are configured.
+* @param        texto — filled bulletin text
+* @param        emailListas — configured email dispatch list keys
+* @param        smsListas — configured SMS dispatch list keys
+* @return       Object with enviar boolean and optional motivo string
+* @uses         marcadoresPorPreencher
+*********************************************************************************************************************/
 export function avaliarEnvioAutomatico(texto: string, emailListas: string[], smsListas: string[]): { enviar: boolean; motivo?: string } {
   const faltam = marcadoresPorPreencher(texto);
   if (faltam.length) return { enviar: false, motivo: `Texto com marcadores por preencher: ${[...new Set(faltam)].join(', ')}` };
@@ -84,15 +92,26 @@ export function avaliarEnvioAutomatico(texto: string, emailListas: string[], sms
   return { enviar: true };
 }
 
-/** Devolve true se o identificador corresponde a um template conhecido. */
+/*********************************************************************************************************************
+* @method       isTemplateId
+* @description  Type guard that returns true when the given string is one of the 8 known IPMA template IDs.
+* @param        id — string to test
+* @return       true when id is a valid TemplateId
+*********************************************************************************************************************/
 export function isTemplateId(id: string): id is TemplateId {
   return (TEMPLATE_IDS as readonly string[]).includes(id);
 }
 
-/**
- * Preenche os marcadores do template com os dados do evento.
- * Marcadores sem dado disponível ficam intactos para o analista completar.
- */
+/*********************************************************************************************************************
+* @method       preencherTemplate
+* @description  Substitutes known markers in the template text with event data. Markers without a
+*               corresponding data field are left intact for the analyst to complete manually.
+*               A NUL sentinel prevents double-substitution and is removed at the end.
+* @param        templateId — template identifier to look up in TEMPLATES (falls back to 0000)
+* @param        d — TemplateData with event fields for placeholder substitution
+* @return       Template text with all available markers replaced
+* @uses         zoneForArea, formatInZone
+*********************************************************************************************************************/
 export function preencherTemplate(templateId: string, d: TemplateData): string {
   const tpl = isTemplateId(templateId) ? TEMPLATES[templateId] : TEMPLATES['0000'];
   const zone = zoneForArea(d.areaName);
@@ -115,6 +134,5 @@ export function preencherTemplate(templateId: string, d: TemplateData): string {
     if (valor == null) continue;
     texto = texto.replace(re, () => `${valor}\u0000`);
   }
-  // Remove o espaço antes da pontuação que segue um marcador já substituído.
   return texto.replace(/\u0000 ([,.])/g, '$1').replace(/\u0000/g, '');
 }

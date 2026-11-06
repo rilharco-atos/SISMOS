@@ -24,6 +24,30 @@ const INCLUDE_LISTA = {
   },
 };
 
+/***********************************************************************************************************************
+* @class         ComunicadosService
+* @description   Core NestJS service that manages the full lifecycle of seismic bulletins. Handles
+*                creation from both manual form submissions and automated XML FTP ingestion, version
+*                management, state transitions, and website publication.
+*
+* @responsibilities
+*                 - Create bulletins (manual and automated XML flows) with atomic sequential references
+*                 - Generate PDF documents for each version via PdfService
+*                 - Manage state transitions (approve, cancel, archive) and their side-effects
+*                 - Coordinate website publication and removal via WebsiteService
+*                 - Provide filtered bulletin listings and KPI aggregations for the dashboard
+*                 - Detect duplicate bulletins from the same seismic event within a 5-minute / 0.5° window
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Reference assignment runs inside a Prisma transaction via ReferenciaService.
+*                 - PDF generation runs outside the transaction to avoid blocking the DB connection.
+*                 - SYSTEM_USER_ID is used for automated flows (polling) with no human actor.
+*                 - KPIs are calculated in Lisbon time for month boundaries but UTC for the last-24h counter.
+***********************************************************************************************************************/
 @Injectable()
 export class ComunicadosService {
   constructor(
@@ -36,14 +60,42 @@ export class ComunicadosService {
     private metrics: MetricsService,
   ) {}
 
-  /** Publica no website a versão atual (ou remove, se o comunicado estiver inativo/cancelado). */
+  /*********************************************************************************************************************
+  * @method       publicarWebsite
+  * @description  Publishes the bulletin's current version to the configured website integration.
+  *               Delegates entirely to WebsiteService.publicar.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @uses         WebsiteService.publicar
+  *********************************************************************************************************************/
   publicarWebsite(id: string, userId: string) { return this.website.publicar(id, userId); }
 
+  /*********************************************************************************************************************
+  * @method       removerWebsite
+  * @description  Removes the bulletin from the configured website integration.
+  *               Delegates entirely to WebsiteService.remover.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @uses         WebsiteService.remover
+  *********************************************************************************************************************/
   removerWebsite(id: string, userId: string) { return this.website.remover(id, userId); }
 
+  /*********************************************************************************************************************
+  * @method       estadoIntegracaoWebsite
+  * @description  Returns the current website integration state object (provider, URL, last error).
+  * @return       WebsiteService integration state
+  * @uses         WebsiteService.integracao
+  *********************************************************************************************************************/
   estadoIntegracaoWebsite() { return this.website.integracao; }
 
-  /** Lista comunicados com filtros opcionais (mes no formato AAAA-MM, sobre a data de criação). */
+  /*********************************************************************************************************************
+  * @method       findAll
+  * @description  Returns all bulletins with optional filters. The mes filter accepts YYYY-MM and
+  *               matches against the bulletin's criadoEm timestamp in UTC.
+  * @param        filters — optional object with estado, areaName, search and mes
+  * @return       Array of bulletin records with versoes and envios included
+  * @uses         PrismaService.comunicado.findMany
+  *********************************************************************************************************************/
   async findAll(filters?: { estado?: string; areaName?: string; search?: string; mes?: string }) {
     const where: Prisma.ComunicadoWhereInput = {};
     if (filters?.estado && filters.estado in ComunicadoEstado) where.estado = filters.estado as ComunicadoEstado;
@@ -61,27 +113,50 @@ export class ComunicadosService {
     return this.prisma.comunicado.findMany({ where, include: INCLUDE_LISTA, orderBy: { criadoEm: 'desc' } });
   }
 
+  /*********************************************************************************************************************
+  * @method       findOne
+  * @description  Returns a single bulletin by UUID. Throws NotFoundException when not found.
+  * @param        id — bulletin UUID
+  * @return       Full bulletin record with versoes, emailEnvios and smsEnvios
+  * @uses         PrismaService.comunicado.findUnique
+  *********************************************************************************************************************/
   async findOne(id: string) {
     const c = await this.prisma.comunicado.findUnique({ where: { id }, include: INCLUDE_LISTA });
     if (!c) throw new NotFoundException('Comunicado não encontrado');
     return c;
   }
 
-  /** Textos oficiais dos templates (identificador, designação e texto base). */
+  /*********************************************************************************************************************
+  * @method       listarTemplates
+  * @description  Returns the full catalogue of available bulletin templates with id, label and base text.
+  * @return       Array of { id, label, texto } objects from the TEMPLATES constant
+  *********************************************************************************************************************/
   listarTemplates() {
     return Object.entries(TEMPLATES).map(([id, t]) => ({ id, label: t.label, texto: t.texto }));
   }
 
-  /** Preenche o template com os dados do evento, sem gravar nada. */
+  /*********************************************************************************************************************
+  * @method       preencher
+  * @description  Fills a bulletin template with the provided event data and returns the resulting texto.
+  *               Does not persist anything; used for the form pre-fill preview.
+  * @param        templateId — template identifier to look up in TEMPLATES
+  * @param        data — TemplateData with event fields for placeholder substitution
+  * @return       Object with templateId and the filled texto string
+  * @uses         preencherTemplate
+  *********************************************************************************************************************/
   preencher(templateId: string, data: TemplateData) {
     if (!isTemplateId(templateId)) throw new BadRequestException('Template desconhecido');
     return { templateId, texto: preencherTemplate(templateId, { ...data, eventDateTime: data.eventDateTime ? new Date(data.eventDateTime) : null }) };
   }
 
-  /**
-   * Analisa o XML carregado pelo analista (substitui o antigo .csv) e devolve os dados para o formulário,
-   * o texto do template já preenchido e, se existir, o comunicado do mesmo evento para criar nova versão.
-   */
+  /*********************************************************************************************************************
+  * @method       analisarXml
+  * @description  Parses an IPMA seismic XML string, fills the matching template, and checks whether
+  *               an existing bulletin for the same event already exists in the DB.
+  * @param        xml — raw UTF-8 XML string from the uploaded file
+  * @return       Object with dados (form fields), origem (audit info), titulo, texto and correspondente
+  * @uses         XmlParserService.parse, preencherTemplate, ComunicadosService.encontrarMesmoEvento
+  *********************************************************************************************************************/
   async analisarXml(xml: string) {
     const data = this.xmlParser.parse(xml);
     const correspondente = await this.encontrarMesmoEvento(data);
@@ -111,7 +186,16 @@ export class ComunicadosService {
     };
   }
 
-  /** Cria um comunicado (versão 001) com referência anual atribuída atomicamente. */
+  /*********************************************************************************************************************
+  * @method       create
+  * @description  Creates a new seismic bulletin (versão 001) with an atomically assigned annual reference.
+  *               Runs the reference assignment inside a Prisma transaction, then generates the PDF outside it.
+  * @param        dto — CreateComunicadoDto with all bulletin fields
+  * @param        userId — authenticated user id for audit and versao record
+  * @param        origem — MANUAL (default) or AUTOMATICO for the FTP polling flow
+  * @return       Full bulletin record with the first versao record
+  * @uses         ReferenciaService.proxima, PdfService.generate, AuditService.log, MetricsService.inc
+  *********************************************************************************************************************/
   async create(dto: CreateComunicadoDto, userId: string, origem: ComunicadoOrigem = ComunicadoOrigem.MANUAL): Promise<any> {
     const xml = dto.xmlFonte ? this.xmlParser.parse(dto.xmlFonte) : null;
     const websiteInicio = dto.websiteInicio ? new Date(dto.websiteInicio) : new Date();
@@ -162,7 +246,15 @@ export class ComunicadosService {
     return this.findOne(comunicado.id);
   }
 
-  /** Fluxo automático: XML depositado no FTP pelo Centro de Operações. */
+  /*********************************************************************************************************************
+  * @method       createFromXml
+  * @description  Automated FTP polling flow: parses the XML, builds a CreateComunicadoDto and delegates
+  *               to create() with origem AUTOMATICO.
+  * @param        xml — raw UTF-8 XML string deposited on the FTP server by the Operations Centre
+  * @param        userId — SYSTEM_USER_ID for automated runs, or the analyst's id for manual XML import
+  * @return       Full bulletin record with the first versao record
+  * @uses         XmlParserService.parse, ComunicadosService.create, preencherTemplate
+  *********************************************************************************************************************/
   async createFromXml(xml: string, userId: string): Promise<any> {
     const data = this.xmlParser.parse(xml);
     const dto: CreateComunicadoDto = {
@@ -182,6 +274,16 @@ export class ComunicadosService {
     return this.create(dto, userId, ComunicadoOrigem.AUTOMATICO);
   }
 
+  /*********************************************************************************************************************
+  * @method       update
+  * @description  Updates bulletin metadata fields without creating a new version record.
+  *               If ativo is set to false, removes the bulletin from the website.
+  * @param        id — bulletin UUID
+  * @param        dto — UpdateComunicadoDto with the fields to update
+  * @param        userId — authenticated user id for audit logging
+  * @return       Full updated bulletin record
+  * @uses         PrismaService.comunicado.update, AuditService.log, WebsiteService.remover
+  *********************************************************************************************************************/
   async update(id: string, dto: UpdateComunicadoDto, userId: string): Promise<any> {
     await this.findOne(id);
     const { websiteInicio, websiteFim, ...resto } = dto;
@@ -200,10 +302,17 @@ export class ComunicadosService {
     return this.findOne(id);
   }
 
-  /**
-   * Nova versão (002, 003, …) do mesmo comunicado. Mantém a referência.
-   * Os dados sismológicos enviados (p.ex. vindos do XML manual) atualizam o comunicado.
-   */
+  /*********************************************************************************************************************
+  * @method       criarNovaVersao
+  * @description  Creates a new numbered version (002, 003, …) of an existing bulletin, preserving the
+  *               same reference. Updates the bulletin's seismic fields from dto when provided.
+  *               Resets the bulletin state to RASCUNHO if it was ENVIADO.
+  * @param        id — bulletin UUID
+  * @param        dto — NovaVersaoDto with mandatory titulo/texto and optional updated fields
+  * @param        userId — authenticated user id for audit and versao record
+  * @return       The newly created Versao record
+  * @uses         PdfService.generate, ComunicadosService.documento, AuditService.log
+  *********************************************************************************************************************/
   async criarNovaVersao(id: string, dto: NovaVersaoDto, userId: string) {
     const atual = await this.findOne(id);
     if (dto.xmlFonte) this.xmlParser.parse(dto.xmlFonte);
@@ -240,20 +349,50 @@ export class ComunicadosService {
     return versao;
   }
 
+  /*********************************************************************************************************************
+  * @method       aprovar
+  * @description  Transitions the bulletin state to APROVADO.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @uses         ComunicadosService.mudarEstado
+  *********************************************************************************************************************/
   async aprovar(id: string, userId: string) { return this.mudarEstado(id, userId, ComunicadoEstado.APROVADO, 'APROVAR'); }
-  /** Cancela e retira do website (comunicado com imprecisão ou que não deve estar público). */
+
+  /*********************************************************************************************************************
+  * @method       cancelar
+  * @description  Transitions the bulletin state to CANCELADO and removes it from the website.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @uses         ComunicadosService.mudarEstado, WebsiteService.remover
+  *********************************************************************************************************************/
   async cancelar(id: string, userId: string) {
     await this.mudarEstado(id, userId, ComunicadoEstado.CANCELADO, 'CANCELAR');
     await this.website.remover(id, userId);
     return this.findOne(id);
   }
 
+  /*********************************************************************************************************************
+  * @method       arquivar
+  * @description  Transitions the bulletin state to ARQUIVADO and removes it from the website.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @uses         ComunicadosService.mudarEstado, WebsiteService.remover
+  *********************************************************************************************************************/
   async arquivar(id: string, userId: string) {
     await this.mudarEstado(id, userId, ComunicadoEstado.ARQUIVADO, 'ARQUIVAR');
     await this.website.remover(id, userId);
     return this.findOne(id);
   }
 
+  /*********************************************************************************************************************
+  * @method       remove
+  * @description  Permanently deletes a bulletin and all its cascaded records. Logs the deletion in the
+  *               audit trail before removing the DB record.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @return       Object with deleted: true
+  * @uses         AuditService.log, PrismaService.comunicado.delete
+  *********************************************************************************************************************/
   async remove(id: string, userId: string) {
     await this.findOne(id);
     await this.prisma.comunicado.delete({ where: { id } });
@@ -261,7 +400,15 @@ export class ComunicadosService {
     return { deleted: true };
   }
 
-  /** Indicadores do dashboard (mês corrente em UTC). */
+  /*********************************************************************************************************************
+  * @method       getKpis
+  * @description  Computes dashboard KPI aggregations: total bulletins, current and previous month counts,
+  *               pending bulletins, automated bulletins in the last 24h, email and SMS delivery rates,
+  *               and the highest-magnitude event of the current month.
+  * @return       KPI object with total, mesAtual, mesAnterior, pendentes, automaticos24h,
+  *               taxaEmail, totalEmail, taxaSms, totalSms and magMax
+  * @uses         PrismaService.comunicado.count, PrismaService.emailEnvio.aggregate
+  *********************************************************************************************************************/
   async getKpis() {
     const agora = new Date();
     const inicioMes = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
@@ -295,7 +442,17 @@ export class ComunicadosService {
     };
   }
 
-  /** Conteúdo do documento (PDF / email) de uma versão. */
+  /*********************************************************************************************************************
+  * @method       documento
+  * @description  Builds the DocumentoComunicado value object used by PdfService and DeliveryService.
+  *               Looks up the technician's name from the users table when userId is a real user (not system).
+  * @param        c — bulletin Prisma record (any, to accept both full and partial selects)
+  * @param        versao — version number for the document header
+  * @param        userId — optional user id to resolve the technician name
+  * @param        dataEmissao — emission timestamp (default: now)
+  * @return       DocumentoComunicado value object ready for PDF/email generation
+  * @uses         PrismaService.user.findUnique
+  *********************************************************************************************************************/
   async documento(c: any, versao: number, userId?: string, dataEmissao = new Date()): Promise<DocumentoComunicado> {
     const tecnico = userId && userId !== SYSTEM_USER_ID
       ? (await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name
@@ -309,6 +466,17 @@ export class ComunicadosService {
     };
   }
 
+  /*********************************************************************************************************************
+  * @method       mudarEstado
+  * @description  Generic state transition helper: finds the bulletin, updates its estado field and
+  *               appends an audit log entry.
+  * @param        id — bulletin UUID
+  * @param        userId — authenticated user id for audit logging
+  * @param        estado — target ComunicadoEstado enum value
+  * @param        acao — audit action string (APROVAR, CANCELAR, ARQUIVAR)
+  * @return       Full updated bulletin record
+  * @uses         PrismaService.comunicado.update, AuditService.log
+  *********************************************************************************************************************/
   private async mudarEstado(id: string, userId: string, estado: ComunicadoEstado, acao: string) {
     await this.findOne(id);
     await this.prisma.comunicado.update({ where: { id }, data: { estado } });
@@ -316,11 +484,25 @@ export class ComunicadosService {
     return this.findOne(id);
   }
 
+  /*********************************************************************************************************************
+  * @method       tituloSugerido
+  * @description  Builds the auto-generated bulletin title from the parsed XML event data.
+  * @param        d — XmlEventData with magnitude and local/areaName fields
+  * @return       Formatted title string (e.g. "Sismo de magnitude 3.5 — Lisboa")
+  *********************************************************************************************************************/
   private tituloSugerido(d: XmlEventData): string {
     const mag = Number.isFinite(d.magnitude) ? ` de magnitude ${d.magnitude.toFixed(1)}` : '';
     return `Sismo${mag} — ${d.local || d.areaName}`;
   }
 
+  /*********************************************************************************************************************
+  * @method       encontrarMesmoEvento
+  * @description  Queries the DB for an existing bulletin within 5 minutes and 0.5° of the parsed event.
+  *               Used during XML analysis to warn the analyst about potential duplicate bulletins.
+  * @param        d — XmlEventData with eventDateTime, lat and lon
+  * @return       The most recently created matching bulletin, or null when none found
+  * @uses         PrismaService.comunicado.findMany
+  *********************************************************************************************************************/
   private async encontrarMesmoEvento(d: XmlEventData) {
     const t = d.eventDateTime.getTime();
     const candidatos = await this.prisma.comunicado.findMany({

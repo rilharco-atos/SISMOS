@@ -7,10 +7,29 @@ type Tab = 'utilizadores' | 'mailing' | 'sms' | 'config' | 'auditoria';
 const LISTAS = ['LGA', 'LIA', 'LGM', 'LIM', 'LGC', 'LIC'];
 const LISTA_LABELS: Record<string, string> = { LGA: 'Geral Açores', LIA: 'Institucional Açores', LGM: 'Geral Madeira', LIM: 'Institucional Madeira', LGC: 'Geral Continente', LIC: 'Institucional Continente' };
 
+/*********************************************************************************************************************
+* @method       Icon
+* @description  Renders a single-path SVG icon using a heroicons v2 outline d= attribute, with
+*               configurable size. Stroke width is fixed at 1.75 for visual consistency.
+* @param        d — SVG path d= attribute string
+* @param        size — icon width and height in pixels (default 16)
+* @return       SVG element with the given path
+*********************************************************************************************************************/
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 }
 
+/*********************************************************************************************************************
+* @method       Modal
+* @description  Generic modal dialog wrapper that renders an overlay, a content panel with a header
+*               and close button, a scrollable body, and an optional footer. Clicking the overlay
+*               dismisses the modal via the onClose callback.
+* @param        title — modal heading text
+* @param        onClose — callback fired when the overlay or the close button is clicked
+* @param        children — body content
+* @param        footer — optional JSX for the modal footer action bar
+* @return       JSX modal overlay element
+*********************************************************************************************************************/
 function Modal({ title, onClose, children, footer }: any) {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -23,6 +42,20 @@ function Modal({ title, onClose, children, footer }: any) {
   );
 }
 
+/*********************************************************************************************************************
+* @class        BackofficePage
+* @description  Administration page for the IPMA Comunicados Sismológicos platform. Restricted to
+*               users with the ADMIN role. Provides five tabs: Utilizadores (user management with
+*               create/edit/delete), Listas de Email / SMS (recipient management with RGPD-masked
+*               display), Configurações (FTP polling, SMTP, SMS gateway, website integration,
+*               automatic dispatch flow, and PONTE ingest API key), and Auditoria (last 50 audit
+*               trail records). Configuration fields can be saved to the database or left blank to
+*               fall back to environment variables.
+* @lastupdate   30/10/2026
+* @company      Atos
+* @developer    Rui Ilharco
+* @reviewed_by  Rui Ilharco
+*********************************************************************************************************************/
 export default function BackofficePage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('utilizadores');
@@ -38,6 +71,7 @@ export default function BackofficePage() {
   const [saving, setSaving] = useState(false);
   const [filterLista, setFilterLista] = useState('');
   const [teste, setTeste] = useState<Record<string, { aCorrer?: boolean; ok?: boolean; mensagem?: string }>>({});
+  const [ingestKey, setIngestKey] = useState<string | null>(null);
 
   const userFromStorage = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') ?? 'null') : null;
   const isAdmin = userFromStorage?.role === 'ADMIN';
@@ -54,7 +88,6 @@ export default function BackofficePage() {
     } catch { router.push('/login'); }
   }
 
-  // Users
   async function saveUser() {
     setSaving(true); setError('');
     try {
@@ -70,7 +103,6 @@ export default function BackofficePage() {
     await usersApi.remove(id); loadAll();
   }
 
-  // Destinatários
   async function saveDest() {
     setSaving(true); setError('');
     try {
@@ -87,7 +119,6 @@ export default function BackofficePage() {
     await listasApi.remove(id); loadAll();
   }
 
-  // Config
   async function saveConfig() {
     setSaving(true); setError('');
     const CAMPOS = ['ftpHost', 'ftpUser', 'ftpPassword', 'ftpIncomingDir', 'ftpProcessedDir', 'pollIntervalMs', 'smtpHost', 'smtpPort', 'smtpUser', 'smtpPassword', 'smtpFrom', 'emailRemetente', 'smsSender', 'smsMode', 'envioAutomatico'];
@@ -109,12 +140,41 @@ export default function BackofficePage() {
     }
   }
 
+  async function gerarChaveIngest() {
+    setTeste(t => ({ ...t, ingestKey: { aCorrer: true } }));
+    setIngestKey(null);
+    try {
+      const r = await systemApi.gerarIngestApiKey();
+      setIngestKey(r.apiKey);
+      setConfig((c: any) => ({ ...c, temIngestApiKey: true }));
+      setTeste(t => ({ ...t, ingestKey: { ok: true } }));
+    } catch (e: any) {
+      setTeste(t => ({ ...t, ingestKey: { ok: false, mensagem: e.message } }));
+    }
+  }
+
+  /*********************************************************************************************************************
+  * @method       ResultadoTeste
+  * @description  Renders the result of a connectivity test (SMTP, FTP, or polling force) as a
+  *               success or error alert, once the test has completed. Returns null while the test
+  *               is still running or has not been triggered.
+  * @param        servico — which test result to display: 'smtp', 'ftp', or 'poll'
+  * @return       JSX alert element or null
+  *********************************************************************************************************************/
   function ResultadoTeste({ servico }: { servico: 'smtp' | 'ftp' | 'poll' }) {
     const r = teste[servico];
     if (!r || r.aCorrer) return null;
     return <div className={`alert ${r.ok ? 'alert-success' : 'alert-error'}`} style={{ margin: '12px 0 0' }}>{r.mensagem}</div>;
   }
 
+  /*********************************************************************************************************************
+  * @method       Origem
+  * @description  Renders a badge indicating whether a configuration field (FTP or SMTP) is in use
+  *               from the backoffice database or from the environment variables. Returns null when
+  *               origem is undefined, which means no value is configured in either source.
+  * @param        origem — 'backoffice' | 'env' | undefined
+  * @return       JSX span badge element or null
+  *********************************************************************************************************************/
   function Origem({ origem }: { origem?: string }) {
     if (!origem) return null;
     return <span className={origem === 'backoffice' ? 'badge badge-info' : 'badge'} title={origem === 'backoffice' ? 'Em uso: valores definidos aqui' : 'Em uso: variáveis de ambiente (.env), porque o host não está definido aqui'}>
@@ -338,6 +398,33 @@ export default function BackofficePage() {
               </label>
               {config.envioAutomatico && config.smsMode !== 'production' && (
                 <div className="alert alert-info" style={{ margin: '12px 0 0' }}>Com o modo de envio em Teste, os envios automáticos vão apenas para os endereços internos.</div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="card-title"><Icon d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /> API de Ingestão (PONTE)</div>
+              <p className="form-hint" style={{ fontSize: 12 }}>
+                Chave de API para o PONTE enviar XML sísmicos via <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>POST /api/ingest/xml</span>.
+                Inclua o header <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>X-Api-Key: &lt;chave&gt;</span> em cada pedido.
+                A variável de ambiente <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>INGEST_API_KEY</span> tem precedência quando definida.
+              </p>
+              <div className="row" style={{ alignItems: 'center', gap: 12, marginTop: 8 }}>
+                <span className={`badge ${config.temIngestApiKey ? 'badge-success' : ''}`}>
+                  {config.temIngestApiKey ? 'Chave definida' : 'Sem chave'}
+                </span>
+                <button className="btn btn-secondary btn-sm" disabled={!!teste.ingestKey?.aCorrer} onClick={gerarChaveIngest}>
+                  {teste.ingestKey?.aCorrer ? 'A gerar…' : 'Gerar nova chave'}
+                </button>
+              </div>
+              {ingestKey && (
+                <div className="alert alert-info" style={{ margin: '12px 0 0' }}>
+                  <div style={{ marginBottom: 6, fontWeight: 600 }}>Guarde esta chave agora — não será mostrada novamente.</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, wordBreak: 'break-all', marginBottom: 8 }}>{ingestKey}</div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(ingestKey)}>Copiar</button>
+                </div>
+              )}
+              {teste.ingestKey && !teste.ingestKey.aCorrer && !ingestKey && (
+                <div className={`alert ${teste.ingestKey.ok ? 'alert-success' : 'alert-error'}`} style={{ margin: '12px 0 0' }}>{teste.ingestKey.mensagem}</div>
               )}
             </div>
 

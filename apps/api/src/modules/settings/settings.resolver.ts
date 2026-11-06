@@ -21,38 +21,30 @@ export interface SmtpSettings {
   user: string;
   password: string;
   from: string;
-  /**
-   * Chave da API HTTP de email. Quando definida, o envio vai por HTTPS em vez
-   * de SMTP — necessário onde as portas SMTP estão bloqueadas (alojamento cloud).
-   * Fica vazia na instalação do IPMA, onde o SMTP interno funciona.
-   */
   apiKey: string;
-  /** Fornecedor da chave acima. "nenhum" quando não há chave e o envio é por SMTP. */
   apiProvedor: 'nenhum' | 'resend' | 'sendgrid';
 }
 
 export interface SmsSettings {
   providerUrl: string;
   apiKey: string;
-  /** Utilizador da autenticação básica; no Twilio é o Account SID. Vazio no formato genérico. */
   apiUser: string;
-  /**
-   * Formato do pedido ao fornecedor. "generico" é o do SMSExpress MEO usado pelo
-   * IPMA; "twilio" existe para ambientes de demonstração sem acesso a esse serviço.
-   */
   formato: 'generico' | 'twilio';
   sender: string;
-  /** 'test': só contactos internos recebem; 'production': envio real. */
   modo: 'test' | 'production';
-  /** true quando o modo teste é imposto pelo ambiente (APP_ENV=test) e não pode ser alterado. */
   impostoPeloAmbiente: boolean;
-  /** Demonstração: nenhuma mensagem sai (ENVIO_SIMULADO=true); nunca ativo em produção. */
   simulado: boolean;
 }
 
 export type Ambiente = 'production' | 'test' | 'development';
 
-/** Ambiente da instalação. Em "test" nunca há envios para destinatários externos. */
+/*********************************************************************************************************************
+* @method       resolverAmbiente
+* @description  Resolves the current runtime environment from the APP_ENV environment variable.
+*               Normalises 'teste' and 'producao' (Portuguese spellings) to their canonical values.
+* @param        env — getter function that returns an env var value by key
+* @return       Ambiente enum value: 'production', 'test' or 'development'
+*********************************************************************************************************************/
 export function resolverAmbiente(env: Env): Ambiente {
   const v = (env('APP_ENV') ?? '').toLowerCase();
   if (v === 'test' || v === 'teste') return 'test';
@@ -65,10 +57,15 @@ const POLL_DEFAULT_MS = 30000;
 
 const preenchido = (v?: string | null) => !!v && v.trim() !== '';
 
-/**
- * FTP: se o host estiver definido no backoffice, todo o bloco vem da base de dados;
- * caso contrário usa as variáveis de ambiente. Nunca mistura as duas origens.
- */
+/*********************************************************************************************************************
+* @method       resolverFtp
+* @description  Resolves the effective FTP settings. When the DB row has a host, all FTP fields
+*               come from the DB (origin = 'backoffice'). Otherwise falls back to env vars entirely.
+*               The two origins are never mixed.
+* @param        cfg — SystemConfig DB row, or null when absent
+* @param        env — getter function that returns an env var value by key
+* @return       FtpSettings value object
+*********************************************************************************************************************/
 export function resolverFtp(cfg: Partial<SystemConfig> | null, env: Env): FtpSettings {
   const intervalo = (v: unknown) => Math.max(POLL_MIN_MS, Number(v) || POLL_DEFAULT_MS);
   if (cfg && preenchido(cfg.ftpHost)) {
@@ -85,17 +82,29 @@ export function resolverFtp(cfg: Partial<SystemConfig> | null, env: Env): FtpSet
   };
 }
 
-/** Remetente no formato "Nome <email>"; se o valor já trouxer "<", é usado tal como está. */
+/*********************************************************************************************************************
+* @method       formatarRemetente
+* @description  Formats a sender address as "Name <email>". When the email already contains a
+*               '<' character it is returned unchanged (already in RFC 5321 format).
+* @param        email — raw email address or pre-formatted sender string
+* @param        nome — optional display name; omitting it returns the bare email address
+* @return       Formatted sender string suitable for the From: header
+*********************************************************************************************************************/
 export function formatarRemetente(email: string, nome?: string | null): string {
   if (email.includes('<')) return email;
   return preenchido(nome) ? `"${nome!.replace(/"/g, '')}" <${email}>` : email;
 }
 
-/** SMTP: mesma regra do FTP, decidida pelo host SMTP. */
+/*********************************************************************************************************************
+* @method       resolverSmtp
+* @description  Resolves the effective SMTP/email transport settings. SendGrid takes precedence over
+*               Resend when both API keys are present. When a DB SMTP host is set, non-secret fields
+*               come from the DB; API keys always come from env vars.
+* @param        cfg — SystemConfig DB row, or null when absent
+* @param        env — getter function that returns an env var value by key
+* @return       SmtpSettings value object with apiKey and apiProvedor indicating the HTTP transport
+*********************************************************************************************************************/
 export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpSettings {
-  // O SendGrid tem precedência: basta verificar um endereço de remetente para
-  // enviar a qualquer destinatário, enquanto o Resend sem domínio verificado só
-  // entrega ao dono da conta.
   const sendgrid = env('SENDGRID_API_KEY') ?? '';
   const resend = env('RESEND_API_KEY') ?? '';
   const apiKey = sendgrid || resend;
@@ -118,10 +127,15 @@ export function resolverSmtp(cfg: Partial<SystemConfig> | null, env: Env): SmtpS
   };
 }
 
-/**
- * Envio (email e SMS): URL e chave do fornecedor são segredos de ambiente; remetente e modo vêm do backoffice.
- * No ambiente de teste o modo é sempre "test", independentemente do backoffice.
- */
+/*********************************************************************************************************************
+* @method       resolverSms
+* @description  Resolves the effective SMS transport settings. Provider URL, API key and user come
+*               from env vars; sender and dispatch mode come from the DB row. In a 'test' environment
+*               the mode is always forced to 'test' regardless of the DB setting.
+* @param        cfg — SystemConfig DB row, or null when absent
+* @param        env — getter function that returns an env var value by key
+* @return       SmsSettings value object with simulado=true when ENVIO_SIMULADO is set outside production
+*********************************************************************************************************************/
 export function resolverSms(cfg: Partial<SystemConfig> | null, env: Env): SmsSettings {
   const ambiente = resolverAmbiente(env);
   const imposto = ambiente === 'test';

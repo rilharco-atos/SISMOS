@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import * as ftp from 'basic-ftp';
 import * as fs from 'fs';
@@ -12,8 +13,32 @@ import { WebsiteService } from '../website/website.service';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { avaliarBackup, avaliarEnvio, avaliarFtp, avaliarWebsite, estadoGlobal } from './saude';
 
-const SEGREDOS = ['ftpPassword', 'smtpPassword'] as const;
+const SEGREDOS = ['ftpPassword', 'smtpPassword', 'ingestApiKey'] as const;
 
+/***********************************************************************************************************************
+* @class         SystemService
+* @description   Injectable NestJS service for system administration, health monitoring and configuration.
+*                Provides the backoffice configuration read/write, connectivity tests for FTP and
+*                SMTP, health checks, ingest API key generation and audit log access.
+*
+* @responsibilities
+*                 - Retrieve and update the singleton SystemConfig row
+*                 - Test live FTP and SMTP/HTTP-email connectivity
+*                 - Compute the aggregated health status from all subsystem component states
+*                 - Generate and rotate the ingest API key
+*                 - Expose the audit log to administrators
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Secret fields (ftpPassword, smtpPassword, ingestApiKey) are never returned in
+*                   getConfig(); callers receive a boolean flag (temXxxPassword) instead.
+*                 - SEGREDOS constant lists the secret field names; empty strings in UpdateConfigDto
+*                   are silently dropped so that blanks from masked UI inputs do not overwrite stored secrets.
+*                 - The public /health endpoint returns only status codes, never host names or messages.
+***********************************************************************************************************************/
 @Injectable()
 export class SystemService {
   constructor(
@@ -25,21 +50,39 @@ export class SystemService {
     private config: ConfigService,
   ) {}
 
-  /** Configuração para o backoffice: as passwords nunca saem do servidor, apenas se estão definidas. */
+  /*********************************************************************************************************************
+  * @method       getConfig
+  * @description  Returns the current SystemConfig row for the backoffice UI. Secret fields are
+  *               redacted and replaced with boolean presence flags (temFtpPassword etc.).
+  *               Also includes the effective origins and runtime environment from SettingsService.
+  * @return       Promise resolving to the sanitised config object, or null when no row exists yet
+  * @uses         PrismaService.systemConfig.findUnique, SettingsService.ftp, SettingsService.smtp,
+  *               SettingsService.sms, SettingsService.ambiente, WebsiteService.integracao
+  *********************************************************************************************************************/
   async getConfig() {
     const cfg = await this.prisma.systemConfig.findUnique({ where: { id: 'singleton' } });
     if (!cfg) return null;
-    const { ftpPassword, smtpPassword, ...resto } = cfg;
+    const { ftpPassword, smtpPassword, ingestApiKey, ...resto } = cfg;
     const [ftp, smtp, sms] = await Promise.all([this.settings.ftp(), this.settings.smtp(), this.settings.sms()]);
     return {
-      ...resto, ftpPassword: '', smtpPassword: '', temFtpPassword: !!ftpPassword, temSmtpPassword: !!smtpPassword,
+      ...resto, ftpPassword: '', smtpPassword: '', ingestApiKey: '',
+      temFtpPassword: !!ftpPassword, temSmtpPassword: !!smtpPassword, temIngestApiKey: !!ingestApiKey,
       origemFtp: ftp.origem, origemSmtp: smtp.origem,
       ambiente: this.settings.ambiente(), modoEnvio: sms.modo, modoImpostoPeloAmbiente: sms.impostoPeloAmbiente,
       website: this.website.integracao,
     };
   }
 
-  /** Estado detalhado de cada componente (apenas administradores). */
+  /*********************************************************************************************************************
+  * @method       saudeDetalhada
+  * @description  Computes the detailed health state for all system components. Restricted to ADMIN
+  *               users in the controller; includes component-level messages, last success/error times
+  *               and the global aggregated status.
+  * @return       Promise resolving to the full health object with db, ambiente, modoEnvio,
+  *               envioSimulado, timestamp and a componentes map
+  * @uses         SystemService.dbOk, SettingsService.ftp, SettingsService.sms, MetricsService.estadoPartilhado,
+  *               WebsiteService.integracao, avaliarFtp, avaliarEnvio, avaliarWebsite, avaliarBackup, estadoGlobal
+  *********************************************************************************************************************/
   async saudeDetalhada() {
     const [db, ftpCfg, sms] = await Promise.all([this.dbOk(), this.settings.ftp(), this.settings.sms()]);
     const integracao = this.website.integracao;
@@ -61,7 +104,13 @@ export class SystemService {
     };
   }
 
-  /** Data do ficheiro de backup mais recente na pasta partilhada com o serviço de backup. */
+  /*********************************************************************************************************************
+  * @method       ultimoBackup
+  * @description  Returns the mtime of the most recent .dump file found in the BACKUP_DIR directory.
+  *               Returns null when the directory is missing, empty or unreadable.
+  * @return       Date of the most recent .dump file, or null
+  * @uses         fs.readdirSync, fs.statSync, ConfigService.get
+  *********************************************************************************************************************/
   private ultimoBackup(): Date | null {
     const dir = path.resolve(this.config.get<string>('BACKUP_DIR') ?? 'backups');
     try {
@@ -76,16 +125,20 @@ export class SystemService {
     try { await this.prisma.$queryRaw`SELECT 1`; return true; } catch { return false; }
   }
 
-  /** Verifica a ligação e autenticação com a configuração efetiva, sem enviar mensagens. */
+  /*********************************************************************************************************************
+  * @method       testarSmtp
+  * @description  Tests the effective email transport configuration without sending any message.
+  *               When an HTTP API key is present (Resend or SendGrid), probes the send endpoint
+  *               with an empty body and distinguishes auth failure (401/403) from valid key (422).
+  *               When using plain SMTP, opens and verifies a nodemailer transport connection.
+  * @param        userId — authenticated user id for audit logging
+  * @return       Promise resolving to { ok, origem, mensagem, duracaoMs }
+  * @uses         SettingsService.smtp, SystemService.resultadoTeste, nodemailer.createTransport
+  *********************************************************************************************************************/
   async testarSmtp(userId: string) {
     const smtp = await this.settings.smtp();
     const inicio = Date.now();
 
-    // Com chave de API o envio é por HTTPS e não há ligação SMTP para verificar.
-    // Sonda-se o endpoint de envio com um corpo vazio: separa autenticação de
-    // payload, porque 401/403 é chave recusada e 422 é chave aceite com campos
-    // em falta. Não serve consultar /domains — as chaves de envio do Resend,
-    // que são as mais comuns, não têm permissão para esse endpoint e dão 401.
     if (smtp.apiProvedor !== 'nenhum') {
       const sendgrid = smtp.apiProvedor === 'sendgrid';
       const nome = sendgrid ? 'SendGrid' : 'Resend';
@@ -119,7 +172,14 @@ export class SystemService {
     }
   }
 
-  /** Liga ao FTP com a configuração efetiva e conta os XML na pasta de entrada, sem os processar. */
+  /*********************************************************************************************************************
+  * @method       testarFtp
+  * @description  Connects to the FTP server using the effective configuration and counts XML files
+  *               in the incoming directory, without processing or downloading them.
+  * @param        userId — authenticated user id for audit logging
+  * @return       Promise resolving to { ok, origem, mensagem, duracaoMs }
+  * @uses         SettingsService.ftp, SystemService.resultadoTeste, basic-ftp.Client
+  *********************************************************************************************************************/
   async testarFtp(userId: string) {
     const cfg = await this.settings.ftp();
     if (!cfg.host) return { ok: false, origem: cfg.origem, mensagem: 'Servidor FTP não configurado' };
@@ -142,7 +202,16 @@ export class SystemService {
     return { ok, origem, mensagem, duracaoMs };
   }
 
-  /** Atualiza a configuração. Passwords vazias são ignoradas (mantém-se a atual). */
+  /*********************************************************************************************************************
+  * @method       updateConfig
+  * @description  Upserts the singleton SystemConfig row. Secret fields whose incoming value is
+  *               empty are silently dropped so that masked UI placeholders do not wipe stored secrets.
+  *               Rejects a request to set smsMode='production' in a 'test' environment.
+  * @param        dto — UpdateConfigDto with the fields to update
+  * @param        userId — authenticated user id for audit logging
+  * @return       Promise resolving to the updated config from getConfig()
+  * @uses         PrismaService.systemConfig.upsert, AuditService.log, SettingsService.ambiente
+  *********************************************************************************************************************/
   async updateConfig(dto: UpdateConfigDto, userId: string) {
     if (dto.smsMode === 'production' && this.settings.ambiente() === 'test') {
       throw new BadRequestException('No ambiente de testes o modo de envio é sempre "teste"');
@@ -157,11 +226,45 @@ export class SystemService {
     return this.getConfig();
   }
 
+  /*********************************************************************************************************************
+  * @method       gerarIngestApiKey
+  * @description  Generates a new random ingest API key (prefix 'ipma_sk_' + 64 hex chars) and
+  *               stores it in the singleton SystemConfig row, replacing any existing key. Returns
+  *               the new key exactly once; subsequent getConfig() calls only show the presence flag.
+  * @param        userId — authenticated user id for audit logging
+  * @return       Promise resolving to { apiKey: string }
+  * @uses         PrismaService.systemConfig.upsert, AuditService.log, crypto.randomBytes
+  *********************************************************************************************************************/
+  async gerarIngestApiKey(userId: string): Promise<{ apiKey: string }> {
+    const apiKey = 'ipma_sk_' + randomBytes(32).toString('hex');
+    await this.prisma.systemConfig.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', ingestApiKey: apiKey },
+      update: { ingestApiKey: apiKey },
+    });
+    await this.audit.log({ userId, acao: 'GERAR_INGEST_API_KEY', entidade: 'SystemConfig', entidadeId: 'singleton', detalhes: { gerada: true } });
+    return { apiKey };
+  }
+
+  /*********************************************************************************************************************
+  * @method       getAuditLog
+  * @description  Returns the most recent audit log entries, capped between 1 and 1000 rows.
+  * @param        limit — maximum number of entries to return (default 100)
+  * @return       Promise resolving to an array of AuditLog records
+  * @uses         AuditService.findAll
+  *********************************************************************************************************************/
   async getAuditLog(limit = 100) {
     return this.audit.findAll(Math.min(Math.max(limit, 1), 1000));
   }
 
-  /** Health público (monitorização/balanceador): só estados, sem mensagens nem nomes de servidores. */
+  /*********************************************************************************************************************
+  * @method       getHealth
+  * @description  Returns a public health summary for load balancers and monitoring tools. Contains
+  *               only numeric status flags, never host names, error messages or configuration values.
+  * @return       Promise resolving to { status, db, ambiente, modoEnvio, envioSimulado, timestamp, componentes }
+  *               where componentes maps each component name to its EstadoSaude string
+  * @uses         SystemService.saudeDetalhada
+  *********************************************************************************************************************/
   async getHealth() {
     const d = await this.saudeDetalhada();
     return {

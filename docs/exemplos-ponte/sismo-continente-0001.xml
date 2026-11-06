@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Exemplo PONTE — Template 0001: Suspeito de sismo sentido (Continente)
+  Uso: POST /api/ingest/xml  (header X-Api-Key: ipma_sk_...)
+       Content-Type: multipart/form-data; campo "file"
+       ou Content-Type: application/xml com o XML no body
+-->
+<report
+  creating-user="ponte-test"
+  creating-authority="IPMA/CSEM"
+  creation-time="2026-10-30T10:00:00">
+
+  <event
+    templateID="0001"
+    firstPage="false"
+    active="true">
+
+    <areaName>Continente</areaName>
+    <eventDateTime>2026-10-30T09:48:00</eventDateTime>
+    <lat>38.7200</lat>
+    <lon>-9.1400</lon>
+    <depth>10</depth>
+    <magnitud>2.8</magnitud>
+    <local>Lisboa</local>
+    <!-- intmax e regiao_intmax: opcionais para template 0001 -->
+    <klmLinks></klmLinks>
+    <smsKey>LGC LIC</smsKey>
+    <emailKey>LGC LIC</emailKey>
+  </event>
+</report>

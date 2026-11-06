@@ -24,6 +24,30 @@ interface Resultado { enviados: number; falhas: number; ignorados: number; erro?
 type Modo = 'test' | 'production';
 type Email = Awaited<ReturnType<DeliveryService['prepararEmail']>>;
 
+/***********************************************************************************************************************
+* @class         DeliveryService
+* @description   Injectable NestJS service that orchestrates bulletin dispatch: email (HTML + PDF
+*                attachment) to email lists, SMS to SMS lists, and publication to the IPMA website.
+*
+* @responsibilities
+*                 - Build the email message with logo, intensity map and PDF attachment
+*                 - Dispatch to multiple email lists with per-address deduplication
+*                 - Dispatch SMS messages to phone lists with per-number deduplication
+*                 - Publish the bulletin to the configured website integration
+*                 - Persist email and SMS delivery records and write to the audit log
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - In test mode (sms.modo='test') only contacts marked internal receive messages.
+*                 - Email transport is selected dynamically: SendGrid, Resend or SMTP nodemailer.
+*                 - All metrics are recorded via MetricsService for observability.
+*
+*               Notes for future enhancements:
+*                 - Add retry logic for transient transport failures.
+***********************************************************************************************************************/
 @Injectable()
 export class DeliveryService {
   private readonly logger = new Logger(DeliveryService.name);
@@ -40,11 +64,19 @@ export class DeliveryService {
     private storage: StorageService,
   ) {}
 
-  /**
-   * Envia uma versão do comunicado: email (HTML + PDF anexo) às listas de email e SMS às listas de SMS,
-   * e publica no website. Um destinatário presente em várias listas recebe apenas uma mensagem.
-   * Em modo teste só recebem os contactos marcados como internos.
-   */
+  /*********************************************************************************************************************
+  * @method       enviarComunicado
+  * @description  Dispatches a bulletin version to email and SMS lists, then publishes it to the website.
+  *               A recipient present in multiple lists receives only one message. In test mode only
+  *               internal contacts receive messages.
+  * @param        comunicadoId — bulletin UUID
+  * @param        versaoId — version UUID
+  * @param        emailListas — list keys for email dispatch
+  * @param        smsListas — list keys for SMS dispatch
+  * @param        userId — authenticated user id for audit logging
+  * @return       Result object with email/SMS counts, failure counts, mode and website publication status
+  * @uses         DeliveryService.prepararEmail, DeliveryService.enviarEmails, DeliveryService.enviarSms, WebsiteService.publicar
+  *********************************************************************************************************************/
   async enviarComunicado(comunicadoId: string, versaoId: string, emailListas: ListaKey[], smsListas: ListaKey[], userId: string) {
     if (!emailListas.length && !smsListas.length) throw new BadRequestException('Selecione pelo menos uma lista');
     const comunicado = await this.prisma.comunicado.findUniqueOrThrow({ where: { id: comunicadoId } });
@@ -89,7 +121,15 @@ export class DeliveryService {
     };
   }
 
-  /** Pré-visualização do corpo HTML do email (logótipo e mapa servidos como data URI só neste caso). */
+  /*********************************************************************************************************************
+  * @method       preVisualizarEmail
+  * @description  Returns the HTML body of the bulletin email with all inline images embedded as data
+  *               URIs, suitable for browser preview without an email client.
+  * @param        comunicadoId — bulletin UUID
+  * @param        versaoId — version UUID
+  * @return       HTML string with logo and intensity map embedded as base64 data URIs
+  * @uses         DeliveryService.prepararEmail, embutirImagens
+  *********************************************************************************************************************/
   async preVisualizarEmail(comunicadoId: string, versaoId: string): Promise<string> {
     const comunicado = await this.prisma.comunicado.findUniqueOrThrow({ where: { id: comunicadoId } });
     const versao = await this.prisma.versao.findFirstOrThrow({ where: { id: versaoId, comunicadoId } });
@@ -97,10 +137,14 @@ export class DeliveryService {
     return embutirImagens(email.html, email.attachments);
   }
 
-  /**
-   * Transporte de email a partir da configuração efetiva. Com RESEND_API_KEY
-   * definida o envio vai por HTTPS; caso contrário usa SMTP (backoffice ou .env).
-   */
+  /*********************************************************************************************************************
+  * @method       criarTransporter
+  * @description  Creates the email transport from the effective configuration. Uses SendGrid when
+  *               apiProvedor is 'sendgrid', Resend when it is 'resend', and SMTP nodemailer otherwise.
+  * @param        smtp — SmtpSettings with provider, API key, host, port, secure and credentials
+  * @return       TransporteEmail instance ready to call sendMail
+  * @uses         TransporteSendgrid, TransporteResend, nodemailer.createTransport
+  *********************************************************************************************************************/
   criarTransporter(smtp: SmtpSettings): TransporteEmail {
     if (smtp.apiProvedor === 'sendgrid') return new TransporteSendgrid(this.http, smtp.apiKey);
     if (smtp.apiProvedor === 'resend') return new TransporteResend(this.http, smtp.apiKey);
@@ -111,6 +155,15 @@ export class DeliveryService {
     });
   }
 
+  /*********************************************************************************************************************
+  * @method       documentoDaVersao
+  * @description  Builds a DocumentoComunicado for a specific bulletin version, merging version-level
+  *               fields (titulo, texto, imagemUrl) over the base bulletin record.
+  * @param        comunicado — raw Prisma bulletin record
+  * @param        versao — raw Prisma version record
+  * @return       Promise resolving to the DocumentoComunicado for this version
+  * @uses         ComunicadosService.documento
+  *********************************************************************************************************************/
   private documentoDaVersao(comunicado: any, versao: any): Promise<DocumentoComunicado> {
     return this.comunicados.documento(
       { ...comunicado, titulo: versao.titulo, texto: versao.texto, imagemUrl: versao.imagemUrl ?? comunicado.imagemUrl },
@@ -118,6 +171,16 @@ export class DeliveryService {
     );
   }
 
+  /*********************************************************************************************************************
+  * @method       prepararEmail
+  * @description  Assembles the complete email message object with subject, HTML body, plain-text body
+  *               and attachments (logo, intensity map, PDF). Missing files are logged and omitted.
+  * @param        documento — DocumentoComunicado with all bulletin content
+  * @param        pdfPath — storage path of the PDF attachment, may be null
+  * @param        modo — dispatch mode used to prepend [TESTE] to the subject when in test mode
+  * @return       Object with subject, html, text and attachments array
+  * @uses         construirEmailHtml, construirEmailTexto, StorageService.ler
+  *********************************************************************************************************************/
   private async prepararEmail(documento: DocumentoComunicado, pdfPath: string | null | undefined, modo: Modo) {
     const attachments: Attachment[] = [];
     const logo = this.imagem(fs.existsSync(LOGO_PATH) ? fs.readFileSync(LOGO_PATH) : null);
@@ -140,6 +203,14 @@ export class DeliveryService {
     };
   }
 
+  /*********************************************************************************************************************
+  * @method       imagem
+  * @description  Detects the image type of a Buffer and returns type metadata. Returns null when the
+  *               buffer is null or has an unrecognised format.
+  * @param        buf — raw image buffer or null
+  * @return       Object with buf, mime type string and file extension, or null
+  * @uses         tipoImagem
+  *********************************************************************************************************************/
   private imagem(buf: Buffer | null) {
     if (!buf) return null;
     const tipo = tipoImagem(buf);
@@ -147,6 +218,20 @@ export class DeliveryService {
     return { buf, mime: tipo === 'png' ? 'image/png' : 'image/jpeg', ext: tipo === 'png' ? 'png' : 'jpg' };
   }
 
+  /*********************************************************************************************************************
+  * @method       enviarEmails
+  * @description  Iterates recipients from a single list and sends the email to each eligible address
+  *               not already dispatched. Records metrics and logs failures per recipient.
+  * @param        transporter — TransporteEmail instance to use for sending
+  * @param        smtp — SmtpSettings providing the from address
+  * @param        email — prepared Email object with subject, html, text and attachments
+  * @param        destinatarios — raw list-recipient records from the database
+  * @param        modo — dispatch mode for eligibility filtering
+  * @param        jaEnviados — deduplication set of already-sent email keys (mutated)
+  * @param        simulado — when true, logs instead of sending
+  * @return       Resultado with enviados, falhas and ignorados counts
+  * @uses         elegivel, chaveEmail, TransporteEmail.sendMail, MetricsService.inc
+  *********************************************************************************************************************/
   private async enviarEmails(transporter: TransporteEmail, smtp: SmtpSettings, email: Email, destinatarios: any[], modo: Modo, jaEnviados: Set<string>, simulado: boolean): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     for (const d of destinatarios) {
@@ -174,15 +259,13 @@ export class DeliveryService {
     return r;
   }
 
-  /**
-   * Pedido ao fornecedor de SMS. O formato genérico é o do SMSExpress MEO usado
-   * pelo IPMA; o Twilio exige form-encoded com autenticação básica
-   * (Account SID e Auth Token) e o remetente tem de ser um número deles.
-   */
-  /**
-   * Razão da falha tal como o fornecedor a descreve. O `message` do axios traz
-   * apenas o código HTTP; o motivo real vem no corpo da resposta.
-   */
+  /*********************************************************************************************************************
+  * @method       erroFornecedor
+  * @description  Extracts a meaningful error description from an axios error. The axios message only
+  *               carries the HTTP status code; the provider's reason is in the response body.
+  * @param        e — thrown error object, typically an axios error with optional response.data
+  * @return       Human-readable error string capped at 500 characters of response body
+  *********************************************************************************************************************/
   private erroFornecedor(e: any): string {
     const dados = e?.response?.data;
     if (dados == null) return e?.message ?? 'erro desconhecido';
@@ -190,6 +273,15 @@ export class DeliveryService {
     return `${e.message} — ${texto.slice(0, 500)}`;
   }
 
+  /*********************************************************************************************************************
+  * @method       pedidoSms
+  * @description  Sends a single SMS via the configured provider. Supports the generic SMSExpress MEO
+  *               format (JSON POST) and Twilio (form-encoded with Basic auth).
+  * @param        sms — SmsSettings with format, providerUrl, sender, apiUser and apiKey
+  * @param        to — destination phone number in E.164 format
+  * @param        mensagem — ASCII SMS message string of at most 140 characters
+  * @uses         HttpService.post
+  *********************************************************************************************************************/
   private async pedidoSms(sms: SmsSettings, to: string, mensagem: string): Promise<void> {
     if (sms.formato === 'twilio') {
       const corpo = new URLSearchParams({ To: to, From: sms.sender, Body: mensagem });
@@ -207,6 +299,17 @@ export class DeliveryService {
     ));
   }
 
+  /*********************************************************************************************************************
+  * @method       enviarSms
+  * @description  Iterates recipients from a single list and sends the SMS to each eligible phone number
+  *               not already dispatched. Records metrics and logs failures per recipient.
+  * @param        sms — SmsSettings with mode, providerUrl and simulado flag
+  * @param        mensagem — SMS message string to send
+  * @param        destinatarios — raw list-recipient records from the database
+  * @param        jaEnviados — deduplication set of already-sent phone keys (mutated)
+  * @return       Resultado with enviados, falhas and ignorados counts
+  * @uses         elegivel, chaveTelefone, DeliveryService.pedidoSms, MetricsService.inc
+  *********************************************************************************************************************/
   private async enviarSms(sms: SmsSettings, mensagem: string, destinatarios: any[], jaEnviados: Set<string>): Promise<Resultado> {
     const r: Resultado = { enviados: 0, falhas: 0, ignorados: 0 };
     const comTelefone = destinatarios.filter(d => d.destinatario.telefone);
@@ -237,6 +340,17 @@ export class DeliveryService {
     return r;
   }
 
+  /*********************************************************************************************************************
+  * @method       registarEstadoEnvio
+  * @description  Records the dispatch outcome to metrics and structured logs. Logs at error level when
+  *               there are failures, and at info level on a clean dispatch.
+  * @param        referencia — bulletin reference code for correlation
+  * @param        falhasEmail — count of email send failures
+  * @param        falhasSms — count of SMS send failures
+  * @param        emails — count of unique email addresses reached
+  * @param        sms — count of unique phone numbers reached
+  * @uses         MetricsService.erro, MetricsService.sucesso
+  *********************************************************************************************************************/
   private registarEstadoEnvio(referencia: string, falhasEmail: number, falhasSms: number, emails: number, sms: number) {
     const detalhe = { referencia, emails, sms, falhasEmail, falhasSms };
     if (falhasEmail + falhasSms > 0) {
@@ -245,8 +359,6 @@ export class DeliveryService {
       return;
     }
     this.metrics.sucesso('envio', detalhe);
-    // Sem esta linha um envio que não chega a ninguém — por exemplo quando
-    // nenhum destinatário é interno em modo de teste — não deixa rasto nenhum.
     this.logger.log(JSON.stringify({ msg: 'Envio concluído', ...detalhe }));
   }
 }

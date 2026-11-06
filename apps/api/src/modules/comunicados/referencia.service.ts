@@ -10,18 +10,47 @@ export interface Referencia {
   numeroAno: number;
 }
 
-/** Formata a referência pública: SISM-2026-0001. */
+/*********************************************************************************************************************
+* @method       formatarReferencia
+* @description  Formats the public bulletin reference string in the canonical IPMA format:
+*               SISM-YYYY-NNNN (e.g. SISM-2026-0001).
+* @param        ano — four-digit year
+* @param        numero — sequential number within the year
+* @return       Formatted reference string
+*********************************************************************************************************************/
 export function formatarReferencia(ano: number, numero: number): string {
   return `${REFERENCIA_PREFIXO}-${ano}-${String(numero).padStart(4, '0')}`;
 }
 
+/***********************************************************************************************************************
+* @class         ReferenciaService
+* @description   Injectable NestJS service that generates atomic sequential bulletin reference numbers
+*                for the current Lisbon calendar year.
+*
+* @responsibilities
+*                 - Assign the next sequential number within the year using a PostgreSQL upsert
+*                 - Ensure no gaps in the sequence when run within the bulletin creation transaction
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Must run inside the same Prisma transaction that creates the bulletin record.
+*                 - On the first use of a new year, seeds from the highest existing numeroAno to handle
+*                   migrated data from prior systems.
+***********************************************************************************************************************/
 @Injectable()
 export class ReferenciaService {
-  /**
-   * Atribui o próximo número do ano (hora de Lisboa) de forma atómica.
-   * Deve correr dentro da mesma transação que cria o comunicado, para não deixar buracos.
-   * Na primeira utilização de um ano continua a partir do maior número já existente (dados migrados).
-   */
+  /*********************************************************************************************************************
+  * @method       proxima
+  * @description  Assigns the next sequential number for the current Lisbon year atomically via a
+  *               PostgreSQL INSERT … ON CONFLICT DO UPDATE. Must be called within a Prisma transaction.
+  * @param        tx — Prisma transaction client for atomic execution
+  * @param        agora — reference timestamp (default: now) used to determine the Lisbon year
+  * @return       Promise resolving to a Referencia with formatted string, year and sequence number
+  * @uses         anoLisboa, formatarReferencia
+  *********************************************************************************************************************/
   async proxima(tx: Prisma.TransactionClient, agora = new Date()): Promise<Referencia> {
     const ano = anoLisboa(agora);
     const rows = await tx.$queryRaw<{ ultimo: number }[]>`

@@ -11,7 +11,6 @@ export interface MensagemEmail {
   attachments: Attachment[];
 }
 
-/** Interface mínima comum ao transporte SMTP (nodemailer) e ao transporte HTTP. */
 export interface TransporteEmail {
   sendMail(m: MensagemEmail): Promise<unknown>;
 }
@@ -19,7 +18,13 @@ export interface TransporteEmail {
 const RESEND_URL = 'https://api.resend.com/emails';
 const SENDGRID_URL = 'https://api.sendgrid.com/v3/mail/send';
 
-/** Separa `"Nome" <email>` nas duas partes; sem nome devolve só o endereço. */
+/*********************************************************************************************************************
+* @method       partirRemetente
+* @description  Parses a "Name" <email> formatted sender string into its email and optional name parts.
+*               When no display name is present, returns only the email address.
+* @param        from — sender string, either plain email or "Name" <email> format
+* @return       Object with email string and optional name string
+*********************************************************************************************************************/
 export function partirRemetente(from: string): { email: string; name?: string } {
   const m = from.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
   if (!m) return { email: from.trim() };
@@ -27,7 +32,14 @@ export function partirRemetente(from: string): { email: string; name?: string } 
   return name ? { email: m[2].trim(), name } : { email: m[2].trim() };
 }
 
-/** Substitui as referências cid: pelas imagens embutidas como data URI. */
+/*********************************************************************************************************************
+* @method       embutirImagens
+* @description  Replaces cid: references in an HTML string with inline data URIs for the matching
+*               Buffer attachments. Used to embed logo and intensity map in preview and in HTTPS transports.
+* @param        html — HTML string potentially containing cid: src references
+* @param        attachments — array of nodemailer Attachment objects with cid and Buffer content
+* @return       HTML string with cid: references replaced by data: URIs
+*********************************************************************************************************************/
 export function embutirImagens(html: string, attachments: Attachment[]): string {
   let out = html;
   for (const a of attachments) {
@@ -38,17 +50,36 @@ export function embutirImagens(html: string, attachments: Attachment[]): string 
   return out;
 }
 
-/**
- * Envio por HTTPS, para ambientes onde as portas SMTP estão fechadas — é o caso
- * das plataformas de alojamento cloud, que as bloqueiam contra spam. Na rede
- * interna do IPMA o SMTP funciona e este transporte fica inativo.
- *
- * A API não aceita imagens inline por cid, por isso o logótipo e o mapa de
- * intensidades seguem embutidos no HTML como data URI.
- */
+/***********************************************************************************************************************
+* @class         TransporteResend
+* @description   Email transport that sends via the Resend HTTPS API. Used in cloud hosting environments
+*                where SMTP ports are blocked. The logo and intensity map are embedded as data URIs because
+*                the Resend API does not support inline CID attachments.
+*
+* @responsibilities
+*                 - Send HTML + plain-text email messages via the Resend REST API
+*                 - Embed inline CID images as data URIs before sending
+*                 - Forward non-inline attachments (e.g. PDF) as base64 encoded content
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - On the IPMA internal network, SMTP is preferred; this transport is inactive there.
+*                 - Timeout is 15 seconds to match the platform's standard HTTP timeout.
+***********************************************************************************************************************/
 export class TransporteResend implements TransporteEmail {
   constructor(private readonly http: HttpService, private readonly apiKey: string) {}
 
+  /*********************************************************************************************************************
+  * @method       sendMail
+  * @description  Sends the email via the Resend API. Embeds CID images as data URIs and forwards
+  *               non-inline Buffer attachments as base64 encoded content in the request payload.
+  * @param        m — MensagemEmail with from, to, subject, html, text and attachments
+  * @return       Resend API response data
+  * @uses         embutirImagens, HttpService.post
+  *********************************************************************************************************************/
   async sendMail(m: MensagemEmail): Promise<unknown> {
     const anexos = m.attachments.filter(a => !a.cid && Buffer.isBuffer(a.content));
     const res = await firstValueFrom(
@@ -75,17 +106,35 @@ export class TransporteResend implements TransporteEmail {
   }
 }
 
-/**
- * Envio por HTTPS através do SendGrid. Ao contrário do Resend, basta verificar
- * um endereço de remetente para poder enviar a qualquer destinatário, sem ter
- * de verificar um domínio — é o que o torna viável para demonstrações.
- *
- * Aceita imagens inline por cid, por isso o logótipo e o mapa seguem como
- * anexos referenciados pelo HTML, tal como no SMTP.
- */
+/***********************************************************************************************************************
+* @class         TransporteSendgrid
+* @description   Email transport that sends via the SendGrid HTTPS API. Unlike Resend, SendGrid only
+*                requires sender address verification (not domain verification), making it suitable for
+*                demonstrations. Supports inline CID attachments natively.
+*
+* @responsibilities
+*                 - Send HTML + plain-text email messages via the SendGrid v3 REST API
+*                 - Map nodemailer CID attachments to SendGrid inline disposition format
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Inline images (logo, map) are sent as SendGrid attachments with disposition 'inline'.
+*                 - The from field is parsed into email + name via partirRemetente().
+***********************************************************************************************************************/
 export class TransporteSendgrid implements TransporteEmail {
   constructor(private readonly http: HttpService, private readonly apiKey: string) {}
 
+  /*********************************************************************************************************************
+  * @method       sendMail
+  * @description  Sends the email via the SendGrid v3 API. Maps nodemailer attachments to the SendGrid
+  *               format, preserving inline/attachment disposition based on the cid field presence.
+  * @param        m — MensagemEmail with from, to, subject, html, text and attachments
+  * @return       SendGrid API response data
+  * @uses         partirRemetente, HttpService.post
+  *********************************************************************************************************************/
   async sendMail(m: MensagemEmail): Promise<unknown> {
     const anexos = m.attachments
       .filter(a => Buffer.isBuffer(a.content))

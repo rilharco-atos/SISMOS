@@ -13,10 +13,27 @@ export interface ResultadoWebsite {
   mensagem: string;
 }
 
-/**
- * Publicação dos comunicados no website público do IPMA.
- * Nunca lança exceções para o chamador: uma falha do website não pode impedir o envio (degradação graciosa).
- */
+/***********************************************************************************************************************
+* @class         WebsiteService
+* @description   Injectable NestJS service that manages publication of approved seismic bulletins on the
+*                IPMA public website. Never throws to the caller — a website failure must not block delivery.
+*
+* @responsibilities
+*                 - Publish or update a bulletin via the configured publisher driver (HTTP, filesystem, noop)
+*                 - Remove bulletins that are cancelled, archived or deactivated
+*                 - Record every publish/remove in the audit log and metrics
+*
+* @lastupdate    30/10/2026
+* @company       Atos
+* @developer     Rui Ilharco
+* @reviewed_by   Rui Ilharco
+* @remarks       Architecture notes:
+*                 - Publishing is disabled in the test environment to protect the public website.
+*                 - The active publisher is resolved at construction from ConfigService environment variables.
+*
+*               Notes for future enhancements:
+*                 - Add a retry policy for transient HTTP failures.
+***********************************************************************************************************************/
 @Injectable()
 export class WebsiteService {
   private readonly logger = new Logger(WebsiteService.name);
@@ -32,16 +49,40 @@ export class WebsiteService {
     this.publisher = criarPublisher(k => config.get<string>(k));
   }
 
+  /*********************************************************************************************************************
+  * @method       integracao
+  * @description  Read-only property that exposes the publisher type, configuration state and activation
+  *               status for health checks and the backoffice configuration page.
+  * @return       Object with tipo, configurado and ativa fields
+  *********************************************************************************************************************/
   get integracao() {
     return { tipo: this.publisher.nome, configurado: this.publisher.configurado, ativa: this.ativa() };
   }
 
-  /** No ambiente de teste nunca se publica no website público. */
+  /*********************************************************************************************************************
+  * @method       ativa
+  * @description  Returns whether website publication is currently active. Always disabled in the test
+  *               environment even when the publisher is fully configured.
+  * @return       true when the publisher is configured and the current environment is not test
+  *********************************************************************************************************************/
   private ativa(): boolean {
     return this.publisher.configurado && this.settings.ambiente() !== 'test';
   }
 
-  /** Publica (ou atualiza) a versão indicada. Comunicados inativos são removidos em vez de publicados. */
+  /*********************************************************************************************************************
+  * @method       publicar
+  * @description  Publishes or updates the indicated bulletin version on the public IPMA website.
+  *               Inactive, cancelled or archived bulletins are removed instead of published.
+  * @param        comunicadoId — bulletin identifier
+  * @param        userId — acting user identifier for the audit trail
+  * @param        versaoNumero — specific version to publish; defaults to the most recent version
+  * @return       ResultadoWebsite with ok flag, websiteEstado and mensagem
+  * @process      1. Load bulletin with latest version; return error if not found
+  *               2. Redirect to remover() if the bulletin is inactive, cancelled or archived
+  *               3. Return early if publishing is disabled (test environment or not configured)
+  *               4. Build publication payload and call publisher.publicar()
+  *               5. Update websiteEstado in the database and register in the audit log
+  *********************************************************************************************************************/
   async publicar(comunicadoId: string, userId: string, versaoNumero?: number): Promise<ResultadoWebsite> {
     const c = await this.prisma.comunicado.findUnique({ where: { id: comunicadoId }, include: { versoes: { orderBy: { numero: 'desc' }, take: 1 } } });
     if (!c) return { ok: false, estado: WebsiteEstado.ERRO, mensagem: 'Comunicado não encontrado' };
@@ -70,7 +111,14 @@ export class WebsiteService {
     }
   }
 
-  /** Retira o comunicado do website (cancelado, arquivado ou inativo). */
+  /*********************************************************************************************************************
+  * @method       remover
+  * @description  Removes the bulletin from the public IPMA website. Safe to call on bulletins that were
+  *               never published; returns ok immediately in that case.
+  * @param        comunicadoId — bulletin identifier
+  * @param        userId — acting user identifier for the audit trail
+  * @return       ResultadoWebsite with ok flag, websiteEstado and mensagem
+  *********************************************************************************************************************/
   async remover(comunicadoId: string, userId: string): Promise<ResultadoWebsite> {
     const c = await this.prisma.comunicado.findUnique({ where: { id: comunicadoId } });
     if (!c) return { ok: false, estado: WebsiteEstado.ERRO, mensagem: 'Comunicado não encontrado' };
@@ -88,11 +136,29 @@ export class WebsiteService {
     }
   }
 
+  /*********************************************************************************************************************
+  * @method       motivoInativa
+  * @description  Returns a human-readable Portuguese message explaining why website publication is
+  *               currently disabled: either the test environment or missing WEBSITE_PUBLISHER config.
+  * @return       Portuguese string describing why publication is not active
+  *********************************************************************************************************************/
   private motivoInativa(): string {
     if (this.settings.ambiente() === 'test') return 'Ambiente de testes: publicação no website desativada';
     return 'Integração com o website não configurada (WEBSITE_PUBLISHER)';
   }
 
+  /*********************************************************************************************************************
+  * @method       registar
+  * @description  Records the result of a publish or remove operation in metrics, the audit log and the
+  *               logger, then returns the ResultadoWebsite for the caller.
+  * @param        acao — audit action name (PUBLICAR_WEBSITE or REMOVER_WEBSITE)
+  * @param        comunicadoId — bulletin identifier
+  * @param        userId — acting user identifier
+  * @param        ok — whether the operation succeeded
+  * @param        estado — WebsiteEstado to report
+  * @param        mensagem — human-readable result message
+  * @return       ResultadoWebsite with the provided ok, estado and mensagem
+  *********************************************************************************************************************/
   private async registar(acao: string, comunicadoId: string, userId: string, ok: boolean, estado: WebsiteEstado, mensagem: string): Promise<ResultadoWebsite> {
     this.metrics.inc(M.WEBSITE, { operacao: acao === 'PUBLICAR_WEBSITE' ? 'publicar' : 'remover', resultado: ok ? 'ok' : 'falha' });
     if (ok) this.metrics.sucesso('website'); else this.metrics.erro('website', mensagem);

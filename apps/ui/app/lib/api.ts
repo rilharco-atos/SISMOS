@@ -1,10 +1,27 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
+/*********************************************************************************************************************
+* @method       authHeaders
+* @description  Returns the HTTP headers required for authenticated API requests: the JWT bearer token
+*               read from localStorage and the application/json Content-Type header.
+* @return       Record<string, string> — headers map ready to be merged into fetch options
+*********************************************************************************************************************/
 export function authHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
   return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
+/*********************************************************************************************************************
+* @method       apiFetch
+* @description  Authenticated fetch wrapper that prepends the API base URL to the given path, merges
+*               auth headers with any caller-supplied headers, redirects to /login on HTTP 401, and
+*               throws a descriptive Error on any non-OK response using the server's message array
+*               when available.
+* @param        path — API path relative to the base (e.g. /comunicados)
+* @param        options — standard RequestInit options; headers are merged with authHeaders()
+* @return       Promise resolving to the JSON-parsed response body typed as T
+* @uses         authHeaders
+*********************************************************************************************************************/
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}/api${path}`, { ...options, headers: { ...authHeaders(), ...(options?.headers ?? {}) } });
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
@@ -12,6 +29,16 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   return res.json();
 }
 
+/*********************************************************************************************************************
+* @method       apiUpload
+* @description  Uploads a file as a multipart/form-data POST using the JWT bearer token from
+*               localStorage. Redirects to /login on 401 and throws a descriptive Error on any
+*               non-OK response using the server's error body.
+* @param        path — API path to POST to
+* @param        field — form field name for the file in the multipart body
+* @param        file — the File object to upload
+* @return       Promise resolving to the JSON-parsed response body typed as T
+*********************************************************************************************************************/
 async function apiUpload<T>(path: string, field: string, file: File): Promise<T> {
   const fd = new FormData();
   fd.append(field, file);
@@ -22,7 +49,15 @@ async function apiUpload<T>(path: string, field: string, file: File): Promise<T>
   return res.json();
 }
 
-/** Abre o PDF de uma versão num novo separador (pedido autenticado). */
+/*********************************************************************************************************************
+* @method       abrirPdf
+* @description  Fetches the PDF binary of a bulletin version via an authenticated request, creates a
+*               temporary object URL, and opens it in a new browser tab. The object URL is revoked
+*               after 60 seconds to release the memory allocation.
+* @param        comunicadoId — UUID of the bulletin
+* @param        versaoId — UUID of the version whose PDF to open
+* @return       Promise resolving when the tab has been directed to the PDF blob URL
+*********************************************************************************************************************/
 export async function abrirPdf(comunicadoId: string, versaoId: string) {
   const janela = window.open('', '_blank');
   const token = localStorage.getItem('token');
@@ -75,6 +110,7 @@ export const systemApi = {
   testarSmtp: () => apiFetch<{ ok: boolean; origem: string; mensagem: string }>('/system/testar/smtp', { method: 'POST' }),
   testarFtp: () => apiFetch<{ ok: boolean; origem: string; mensagem: string }>('/system/testar/ftp', { method: 'POST' }),
   forcarPolling: () => apiFetch<{ origem: string; ficheiros: number; erro?: string }>('/system/polling', { method: 'POST' }),
+  gerarIngestApiKey: () => apiFetch<{ apiKey: string }>('/system/ingest-api-key/gerar', { method: 'POST' }),
 };
 
 export const deliveryApi = {
