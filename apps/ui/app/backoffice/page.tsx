@@ -207,20 +207,26 @@ export default function DefinicoesPage() {
 
   const filteredDests = filterLista ? destinatarios.filter(d => d.lista === filterLista) : destinatarios;
 
-  function SidebarItem({ k, label, icon }: { k: Section; label: string; icon: string }) {
+  function SidebarItem({ k, label, icon, collapsed }: { k: Section; label: string; icon: string; collapsed?: boolean }) {
     const active = section === k;
     return (
-      <button onClick={() => setSection(k)} style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-        padding: '8px 16px', border: 'none', borderRadius: 0, cursor: 'pointer',
-        fontSize: 13, textAlign: 'left',
-        background: active ? 'var(--accent-muted, rgba(34,197,94,0.08))' : 'transparent',
-        color: active ? 'var(--accent)' : 'var(--text-secondary)',
-        fontWeight: active ? 600 : 400,
-        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
-      }}>
+      <button
+        onClick={() => setSection(k)}
+        title={collapsed ? label : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start',
+          gap: collapsed ? 0 : 10, width: '100%',
+          padding: collapsed ? '10px 0' : '8px 16px',
+          border: 'none', borderRadius: 0, cursor: 'pointer',
+          fontSize: 13, textAlign: 'left',
+          background: active ? 'var(--accent-muted, rgba(34,197,94,0.08))' : 'transparent',
+          color: active ? 'var(--accent)' : 'var(--text-secondary)',
+          fontWeight: active ? 600 : 400,
+          borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+        }}
+      >
         <Icon d={icon} size={15} />
-        {label}
+        {!collapsed && label}
       </button>
     );
   }
@@ -239,12 +245,12 @@ export default function DefinicoesPage() {
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height: 'calc(100vh - 56px)' }}>
 
-        {/* Sidebar — colapsa na secção Dados para dar espaço à tabela */}
-        <nav style={{ borderRight: '1px solid var(--border)', overflowY: 'auto', padding: section === 'dados' ? 0 : '12px 0', background: 'var(--bg-secondary)', minWidth: section === 'dados' ? 0 : 220, maxWidth: section === 'dados' ? 0 : 220, overflow: 'hidden', transition: 'min-width 0.2s, max-width 0.2s' }}>
+        {/* Sidebar — estreita em Dados mas permanece navegável via ícones */}
+        <nav style={{ borderRight: '1px solid var(--border)', overflowY: 'auto', padding: section === 'dados' ? '8px 0' : '12px 0', background: 'var(--bg-secondary)', minWidth: section === 'dados' ? 48 : 220, maxWidth: section === 'dados' ? 48 : 220, overflow: 'hidden', transition: 'min-width 0.2s, max-width 0.2s' }}>
           {SIDEBAR.map(({ group, items }) => (
             <div key={group}>
-              <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{group}</div>
-              {items.map(({ key, label, icon }) => <SidebarItem key={key} k={key} label={label} icon={icon} />)}
+              {section !== 'dados' && <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{group}</div>}
+              {items.map(({ key, label, icon }) => <SidebarItem key={key} k={key} label={label} icon={icon} collapsed={section === 'dados'} />)}
             </div>
           ))}
         </nav>
