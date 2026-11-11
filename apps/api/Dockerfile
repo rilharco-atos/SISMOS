@@ -20,4 +20,4 @@ COPY assets ./assets
 COPY scripts ./scripts
 RUN mkdir -p uploads/imagens uploads/pdfs ftp/incoming ftp/processed
 EXPOSE 3001
-CMD ["sh", "-c", "npx prisma migrate deploy && node scripts/seed-demo-prod.js; node dist/main"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node scripts/seed-demo-prod.js; node dist/main"]
