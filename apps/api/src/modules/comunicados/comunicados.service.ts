@@ -247,6 +247,44 @@ export class ComunicadosService {
   }
 
   /*********************************************************************************************************************
+  * @method       importarXml
+  * @description  Smart XML import for automated flows: detects whether the event already exists in
+  *               the DB (by eventDateTime ± 5 min and coordinates ± 0.5°) and creates a new version
+  *               of the existing bulletin rather than a duplicate. Falls through to createFromXml when
+  *               no matching event is found.
+  *               When the update XML carries empty smsKey/emailKey (e.g. intVI), the existing
+  *               distribution lists are preserved on the bulletin.
+  * @param        xml — raw UTF-8 XML string from FTP/SFTP or the PONTE integration
+  * @param        userId — SYSTEM_USER_ID for automated runs
+  * @return       Full bulletin record (new or updated)
+  * @uses         XmlParserService.parse, ComunicadosService.encontrarMesmoEvento, ComunicadosService.criarNovaVersao
+  *********************************************************************************************************************/
+  async importarXml(xml: string, userId: string): Promise<any> {
+    const data = this.xmlParser.parse(xml);
+    const correspondente = await this.encontrarMesmoEvento(data);
+    if (correspondente) {
+      const dto: NovaVersaoDto = {
+        titulo: this.tituloSugerido(data),
+        texto: preencherTemplate(data.templateId, data),
+        templateId: data.templateId,
+        local: data.local || undefined,
+        lat: data.lat, lon: data.lon, depth: data.depth, magnitude: data.magnitude,
+        intmax: data.intmax || undefined,
+        regiaoIntmax: data.regiaoIntmax || undefined,
+        infoMacrossAdicional: data.infoMacrossAdicional || undefined,
+        primeiraPagina: data.firstPage,
+        ativo: data.active,
+        smsListas: data.smsKeys.length > 0 ? data.smsKeys as ListaKey[] : undefined,
+        emailListas: data.emailKeys.length > 0 ? data.emailKeys as ListaKey[] : undefined,
+        xmlFonte: xml,
+      };
+      await this.criarNovaVersao(correspondente.id, dto, userId);
+      return this.findOne(correspondente.id);
+    }
+    return this.createFromXml(xml, userId);
+  }
+
+  /*********************************************************************************************************************
   * @method       createFromXml
   * @description  Automated FTP polling flow: parses the XML, builds a CreateComunicadoDto and delegates
   *               to create() with origem AUTOMATICO.

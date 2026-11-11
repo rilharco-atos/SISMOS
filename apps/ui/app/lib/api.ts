@@ -104,7 +104,10 @@ export const usersApi = {
 export const systemApi = {
   getConfig: () => apiFetch<any>('/system/config'),
   updateConfig: (data: any) => apiFetch<any>('/system/config', { method: 'PUT', body: JSON.stringify(data) }),
-  getAudit: (limit = 100) => apiFetch<any[]>(`/system/audit?limit=${limit}`),
+  getDadosTabelas: () => apiFetch<{ key: string; label: string; total: number }[]>('/system/dados'),
+  getDadosTabela: (tabela: string, page = 1, pageSize = 50, q = '') =>
+    apiFetch<{ tabela: string; label: string; colunas: { key: string; label: string; tipo: string }[]; items: Record<string, any>[]; total: number; page: number; pageSize: number; totalPages: number }>(
+      `/system/dados/${encodeURIComponent(tabela)}?page=${page}&pageSize=${pageSize}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   getHealth: () => apiFetch<any>('/system/health'),
   getSaude: () => apiFetch<any>('/system/saude'),
   testarSmtp: () => apiFetch<{ ok: boolean; origem: string; mensagem: string }>('/system/testar/smtp', { method: 'POST' }),

@@ -1,3 +1,13 @@
+# Perfis disponíveis:
+#   docker compose up -d                           → core (postgres + api + ui)
+#   docker compose --profile monitoring up -d      → + Prometheus + Alertmanager + Grafana
+#   docker compose --profile backup up -d          → + backup automático
+#   Tudo: docker compose --profile monitoring --profile backup up -d
+#
+# Grafana:      http://localhost:<GRAFANA_PORT>    (default 3001; configurável no .env)
+# Prometheus:   http://localhost:<PROMETHEUS_PORT>    (default 9090; configurável no .env)
+# Alertmanager: http://localhost:<ALERTMANAGER_PORT>  (default 9093; configurável no .env)
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -85,6 +95,71 @@ services:
     ports:
       - "3000:3000"
 
+  # ── PROMETHEUS ───────────────────────────────────────────────────────────────
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v2.53.3
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ── ALERTMANAGER ─────────────────────────────────────────────────────────────
+  alertmanager:
+    profiles: [monitoring]
+    image: prom/alertmanager:v0.26.0
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--cluster.listen-address='
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-sismos@ipma.pt}
+      SMTP_HOST: ${SMTP_HOST:-smtp.ipma.pt}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-sismos@ipma.pt}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ── GRAFANA ──────────────────────────────────────────────────────────────────
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:10.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_LIVE_MAX_CONNECTIONS: "0"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./docker/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - alertmanager
+    restart: unless-stopped
+
   backup:
     profiles: [backup]
     image: postgres:16-alpine
@@ -112,3 +187,6 @@ volumes:
   ftp_processed:
   website:
   backups:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

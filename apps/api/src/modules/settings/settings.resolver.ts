@@ -8,6 +8,8 @@ export interface FtpSettings {
   host: string;
   user: string;
   password: string;
+  port: number;
+  sftp: boolean;
   incomingDir: string;
   processedDir: string;
   pollIntervalMs: number;
@@ -68,15 +70,19 @@ const preenchido = (v?: string | null) => !!v && v.trim() !== '';
 *********************************************************************************************************************/
 export function resolverFtp(cfg: Partial<SystemConfig> | null, env: Env): FtpSettings {
   const intervalo = (v: unknown) => Math.max(POLL_MIN_MS, Number(v) || POLL_DEFAULT_MS);
+  const porta = Number(env('FTP_PORT')) || 22;
+  const sftp = (env('FTP_SFTP') ?? 'true').toLowerCase() !== 'false';
   if (cfg && preenchido(cfg.ftpHost)) {
     return {
       origem: 'backoffice', host: cfg.ftpHost!.trim(), user: cfg.ftpUser || 'anonymous', password: cfg.ftpPassword ?? '',
+      port: porta, sftp,
       incomingDir: cfg.ftpIncomingDir || '/incoming', processedDir: cfg.ftpProcessedDir || '/processed',
       pollIntervalMs: intervalo(cfg.pollIntervalMs),
     };
   }
   return {
     origem: 'env', host: env('FTP_HOST') ?? '', user: env('FTP_USER') || 'anonymous', password: env('FTP_PASSWORD') ?? '',
+    port: porta, sftp,
     incomingDir: env('FTP_INCOMING_DIR') || '/incoming', processedDir: env('FTP_PROCESSED_DIR') || '/processed',
     pollIntervalMs: intervalo(env('FTP_POLL_INTERVAL_MS') ?? cfg?.pollIntervalMs),
   };

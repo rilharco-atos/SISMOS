@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Query, UseGuards, Request, ForbiddenException, Res } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param, Query, UseGuards, Request, ForbiddenException, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -173,5 +173,37 @@ export class SystemController {
   audit(@Request() req: any, @Query('limit') limit?: string) {
     if (req.user.role !== 'ADMIN') throw new ForbiddenException();
     return this.svc.getAuditLog(limit ? parseInt(limit, 10) : 100);
+  }
+
+  /*********************************************************************************************************************
+  * @method       dadosTabelas
+  * @description  Lists the tables readable in the backoffice data tab, with row counts. ADMIN only.
+  * @param        req — Express request with the authenticated user
+  * @return       Promise resolving to an array of { key, label, total }
+  * @uses         SystemService.listarTabelasDados
+  *********************************************************************************************************************/
+  @UseGuards(JwtAuthGuard)
+  @Get('dados')
+  dadosTabelas(@Request() req: any) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException();
+    return this.svc.listarTabelasDados();
+  }
+
+  /*********************************************************************************************************************
+  * @method       dadosTabela
+  * @description  Returns one page of a whitelisted table, read-only. ADMIN only.
+  * @param        req — Express request with the authenticated user
+  * @param        tabela — table key from the registry
+  * @param        page — optional 1-based page number (default 1)
+  * @param        pageSize — optional rows per page (default 50, max 100)
+  * @param        q — optional search text
+  * @return       Promise resolving to the page payload from SystemService.getDadosTabela
+  * @uses         SystemService.getDadosTabela
+  *********************************************************************************************************************/
+  @UseGuards(JwtAuthGuard)
+  @Get('dados/:tabela')
+  dadosTabela(@Request() req: any, @Param('tabela') tabela: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('q') q?: string) {
+    if (req.user.role !== 'ADMIN') throw new ForbiddenException();
+    return this.svc.getDadosTabela(tabela, page ? parseInt(page, 10) : 1, pageSize ? parseInt(pageSize, 10) : 50, q);
   }
 }

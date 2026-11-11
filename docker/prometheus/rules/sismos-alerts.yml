@@ -1,0 +1,49 @@
+groups:
+  - name: sismos-operacional
+    rules:
+
+      # API em baixo há mais de 2 minutos
+      - alert: SismosApiDown
+        expr: up{job="sismos-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API de Sismos inacessível"
+          description: "O Prometheus não consegue raspar métricas da API há mais de 2 minutos."
+
+      # FTP sem polling com sucesso há mais de 10 minutos
+      - alert: FtpSemPolling
+        expr: (time() - sismos_ftp_ultimo_poll_sucesso_timestamp_seconds) > 600
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FTP sem polling com sucesso"
+          description: "O último polling FTP com sucesso foi há {{ humanizeDuration $value }}."
+
+      # Taxa de erros HTTP acima de 5% nos últimos 5 minutos
+      - alert: TaxaErrosHttpElevada
+        expr: >
+          sum(rate(sismos_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(sismos_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de erros HTTP elevada"
+          description: "Mais de 5% dos pedidos HTTP estão a devolver erros 5xx."
+
+      # Falhas de envio de SMS ou email acima de 10% nos últimos 10 minutos
+      - alert: FalhasEnvioElevadas
+        expr: >
+          sum(rate(sismos_envios_total{resultado="falha"}[10m]))
+          /
+          sum(rate(sismos_envios_total[10m])) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de falhas de envio elevada"
+          description: "Mais de 10% dos envios (canal={{ $labels.canal }}) estão a falhar."

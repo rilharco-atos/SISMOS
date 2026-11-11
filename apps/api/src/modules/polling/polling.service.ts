@@ -2,9 +2,11 @@ import { Injectable, Logger, OnModuleInit, BadRequestException } from '@nestjs/c
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as ftp from 'basic-ftp';
+import SftpClient = require('ssh2-sftp-client');
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { normalizarCharset } from '../../common/charset.util';
 import { ComunicadosService, SYSTEM_USER_ID } from '../comunicados/comunicados.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AuditService } from '../audit/audit.service';
@@ -124,64 +126,110 @@ export class PollingService implements OnModuleInit {
   async pollFtp(ftpCfg?: FtpSettings): Promise<{ origem: string; ficheiros: number; erro?: string }> {
     if (this.processing) return { origem: '', ficheiros: 0, erro: 'Já existe um polling em curso' };
     const cfg = ftpCfg ?? await this.settings.ftp();
-    if (!cfg.host) return { origem: cfg.origem, ficheiros: 0, erro: 'Servidor FTP não configurado' };
+    if (!cfg.host) return { origem: cfg.origem, ficheiros: 0, erro: 'Servidor não configurado' };
     this.processing = true;
     this.ultimoPoll = Date.now();
     let processados = 0;
     let erroGeral: string | undefined;
 
-    const client = new ftp.Client(15000);
-    client.ftp.verbose = false;
+    if (cfg.sftp) {
+      const sftp = new SftpClient();
+      try {
+        await sftp.connect({ host: cfg.host, port: cfg.port, username: cfg.user, password: cfg.password });
 
-    try {
-      await client.access({ host: cfg.host, user: cfg.user, password: cfg.password, secure: false });
+        const list = await sftp.list(cfg.incomingDir);
+        const xmlFiles = list.filter(f => f.name.endsWith('.xml') && f.type === '-');
+        this.metrics.set(M.FTP_ULTIMO_SUCESSO, Math.floor(Date.now() / 1000));
+        this.metrics.sucesso('ftp', { origem: cfg.origem, host: cfg.host, pendentes: xmlFiles.length });
 
-      const incomingDir = cfg.incomingDir;
-      const processedDir = cfg.processedDir;
-      const localIn = this.pasta('incoming');
-      const localProc = this.pasta('processed');
+        for (const file of xmlFiles) {
+          const nome = path.basename(file.name);
+          const remotePath = `${cfg.incomingDir}/${nome}`;
+          const localPath = path.join(this.pasta('incoming'), nome);
+          const inicioFicheiro = Date.now();
 
-      const list = await client.list(incomingDir);
-      const xmlFiles = list.filter(f => f.name.endsWith('.xml') && f.type === ftp.FileType.File);
-      this.metrics.set(M.FTP_ULTIMO_SUCESSO, Math.floor(Date.now() / 1000));
-      this.metrics.sucesso('ftp', { origem: cfg.origem, host: cfg.host, pendentes: xmlFiles.length });
+          try {
+            await sftp.get(remotePath, localPath);
+            const xml = normalizarCharset(fs.readFileSync(localPath));
+            const comunicado = await this.comunicados.importarXml(xml, SYSTEM_USER_ID);
+            this.logger.log(JSON.stringify({ msg: 'Comunicado importado via SFTP', ficheiro: nome, referencia: comunicado.referencia }));
 
-      for (const file of xmlFiles) {
-        const nome = path.basename(file.name);
-        const remotePath = `${incomingDir}/${nome}`;
-        const localPath = path.join(localIn, nome);
+            await sftp.rename(remotePath, `${cfg.processedDir}/${nome}`)
+              .catch(() => sftp.delete(remotePath).catch(() => undefined));
+            fs.renameSync(localPath, path.join(this.pasta('processed'), nome));
 
-        try {
-          await client.downloadTo(localPath, remotePath);
-          const xml = fs.readFileSync(localPath, 'utf-8').replace(/^﻿/, '');
-          const comunicado = await this.comunicados.createFromXml(xml, SYSTEM_USER_ID);
-          this.logger.log(JSON.stringify({ msg: 'Comunicado importado via FTP', ficheiro: nome, referencia: comunicado.referencia }));
-
-          await client.rename(remotePath, `${processedDir}/${nome}`).catch(() => client.remove(remotePath).catch(() => undefined));
-          fs.renameSync(localPath, path.join(localProc, nome));
-
-          processados++;
-          this.metrics.inc(M.XML_PROCESSADOS, { resultado: 'importado' });
-          await this.envioAutomatico(comunicado, nome);
-        } catch (e: any) {
-          this.metrics.inc(M.XML_PROCESSADOS, { resultado: e instanceof BadRequestException ? 'rejeitado' : 'erro' });
-          if (e instanceof BadRequestException) {
-            await client.rename(remotePath, `${processedDir}/REJEITADO_${nome}`).catch(() => undefined);
-            apagarFicheiro(localPath);
-            await this.audit.log({ userId: SYSTEM_USER_ID, acao: 'XML_REJEITADO', entidade: 'Ficheiro', entidadeId: nome, detalhes: { erro: e.message } });
+            processados++;
+            this.metrics.inc(M.XML_PROCESSADOS, { resultado: 'importado' });
+            await this.envioAutomatico(comunicado, nome, inicioFicheiro);
+          } catch (e: any) {
+            this.metrics.inc(M.XML_PROCESSADOS, { resultado: e instanceof BadRequestException ? 'rejeitado' : 'erro' });
+            if (e instanceof BadRequestException) {
+              await sftp.rename(remotePath, `${cfg.processedDir}/REJEITADO_${nome}`).catch(() => undefined);
+              apagarFicheiro(localPath);
+              await this.audit.log({ userId: SYSTEM_USER_ID, acao: 'XML_REJEITADO', entidade: 'Ficheiro', entidadeId: nome, detalhes: { erro: e.message } });
+            }
+            this.logger.error(JSON.stringify({ msg: 'Erro a processar ficheiro SFTP', ficheiro: nome, erro: e.message }));
           }
-          this.logger.error(JSON.stringify({ msg: 'Erro a processar ficheiro FTP', ficheiro: nome, erro: e.message }));
         }
+      } catch (e: any) {
+        erroGeral = e.message;
+        this.metrics.inc(M.FTP_ERROS);
+        this.metrics.erro('ftp', e.message, { origem: cfg.origem, host: cfg.host });
+        this.logger.error(JSON.stringify({ msg: 'Erro no polling SFTP', origem: cfg.origem, erro: e.message }));
+      } finally {
+        await sftp.end().catch(() => undefined);
+        this.processing = false;
       }
-    } catch (e: any) {
-      erroGeral = e.message;
-      this.metrics.inc(M.FTP_ERROS);
-      this.metrics.erro('ftp', e.message, { origem: cfg.origem, host: cfg.host });
-      this.logger.error(JSON.stringify({ msg: 'Erro no polling FTP', origem: cfg.origem, erro: e.message }));
-    } finally {
-      client.close();
-      this.processing = false;
+    } else {
+      const client = new ftp.Client(15000);
+      client.ftp.verbose = false;
+      try {
+        await client.access({ host: cfg.host, user: cfg.user, password: cfg.password, secure: false });
+
+        const list = await client.list(cfg.incomingDir);
+        const xmlFiles = list.filter(f => f.name.endsWith('.xml') && f.type === ftp.FileType.File);
+        this.metrics.set(M.FTP_ULTIMO_SUCESSO, Math.floor(Date.now() / 1000));
+        this.metrics.sucesso('ftp', { origem: cfg.origem, host: cfg.host, pendentes: xmlFiles.length });
+
+        for (const file of xmlFiles) {
+          const nome = path.basename(file.name);
+          const remotePath = `${cfg.incomingDir}/${nome}`;
+          const localPath = path.join(this.pasta('incoming'), nome);
+          const inicioFicheiro = Date.now();
+
+          try {
+            await client.downloadTo(localPath, remotePath);
+            const xml = normalizarCharset(fs.readFileSync(localPath));
+            const comunicado = await this.comunicados.importarXml(xml, SYSTEM_USER_ID);
+            this.logger.log(JSON.stringify({ msg: 'Comunicado importado via FTP', ficheiro: nome, referencia: comunicado.referencia }));
+
+            await client.rename(remotePath, `${cfg.processedDir}/${nome}`).catch(() => client.remove(remotePath).catch(() => undefined));
+            fs.renameSync(localPath, path.join(this.pasta('processed'), nome));
+
+            processados++;
+            this.metrics.inc(M.XML_PROCESSADOS, { resultado: 'importado' });
+            await this.envioAutomatico(comunicado, nome, inicioFicheiro);
+          } catch (e: any) {
+            this.metrics.inc(M.XML_PROCESSADOS, { resultado: e instanceof BadRequestException ? 'rejeitado' : 'erro' });
+            if (e instanceof BadRequestException) {
+              await client.rename(remotePath, `${cfg.processedDir}/REJEITADO_${nome}`).catch(() => undefined);
+              apagarFicheiro(localPath);
+              await this.audit.log({ userId: SYSTEM_USER_ID, acao: 'XML_REJEITADO', entidade: 'Ficheiro', entidadeId: nome, detalhes: { erro: e.message } });
+            }
+            this.logger.error(JSON.stringify({ msg: 'Erro a processar ficheiro FTP', ficheiro: nome, erro: e.message }));
+          }
+        }
+      } catch (e: any) {
+        erroGeral = e.message;
+        this.metrics.inc(M.FTP_ERROS);
+        this.metrics.erro('ftp', e.message, { origem: cfg.origem, host: cfg.host });
+        this.logger.error(JSON.stringify({ msg: 'Erro no polling FTP', origem: cfg.origem, erro: e.message }));
+      } finally {
+        client.close();
+        this.processing = false;
+      }
     }
+
     return { origem: cfg.origem, ficheiros: processados, erro: erroGeral };
   }
 
@@ -194,11 +242,13 @@ export class PollingService implements OnModuleInit {
   * @param        ficheiro — source filename used in audit log entries
   * @uses         SettingsService.envioAutomatico, ComunicadosService.aprovar, DeliveryService.enviarComunicado
   *********************************************************************************************************************/
-  async envioAutomatico(comunicado: any, ficheiro: string) {
+  async envioAutomatico(comunicado: any, ficheiro: string, inicioFicheiro?: number) {
     if (!(await this.settings.envioAutomatico())) return;
 
     const decisao = avaliarEnvioAutomatico(comunicado.texto, comunicado.emailListas ?? [], comunicado.smsListas ?? []);
     if (!decisao.enviar) {
+      const semLista = (comunicado.emailListas ?? []).length === 0 && (comunicado.smsListas ?? []).length === 0;
+      if (semLista) this.metrics.inc(M.XML_SEM_LISTA);
       await this.audit.log({
         userId: SYSTEM_USER_ID, acao: 'ENVIO_AUTOMATICO_RETIDO', entidade: 'Comunicado', entidadeId: comunicado.id, comunicadoId: comunicado.id,
         detalhes: { ficheiro, motivo: decisao.motivo },
@@ -209,7 +259,13 @@ export class PollingService implements OnModuleInit {
 
     try {
       await this.comunicados.aprovar(comunicado.id, SYSTEM_USER_ID);
-      const r = await this.delivery.enviarComunicado(comunicado.id, comunicado.versoes[0].id, comunicado.emailListas, comunicado.smsListas, SYSTEM_USER_ID);
+      const versaoId = comunicado.versoes[comunicado.versoes.length - 1]?.id ?? comunicado.versoes[0]?.id;
+      const r = await this.delivery.enviarComunicado(comunicado.id, versaoId, comunicado.emailListas, comunicado.smsListas, SYSTEM_USER_ID);
+      if (inicioFicheiro) {
+        const latencia = (Date.now() - inicioFicheiro) / 1000;
+        this.metrics.inc(M.XML_LATENCIA_SOMA, {}, latencia);
+        this.metrics.inc(M.XML_LATENCIA_CONTAGEM);
+      }
       this.logger.log(JSON.stringify({ msg: 'Envio automático concluído', referencia: comunicado.referencia, ...r }));
     } catch (e: any) {
       await this.audit.log({

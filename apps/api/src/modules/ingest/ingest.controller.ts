@@ -6,6 +6,7 @@ import { IngestApiKeyGuard } from './api-key.guard';
 import { ComunicadosService, SYSTEM_USER_ID } from '../comunicados/comunicados.service';
 import { AuditService } from '../audit/audit.service';
 import { PollingService } from '../polling/polling.service';
+import { normalizarCharset } from '../../common/charset.util';
 
 const MAX_XML_BYTES = 256 * 1024;
 
@@ -67,10 +68,10 @@ export class IngestController {
 
     if (file?.buffer?.length) {
       if (!/\.xml$/i.test(file.originalname ?? '')) throw new BadRequestException('O ficheiro tem de ter extensão .xml');
-      xml = file.buffer.toString('utf-8').replace(/^﻿/, '');
+      xml = normalizarCharset(file.buffer);
     } else if (Buffer.isBuffer(req.body) && req.body.length) {
       // Body capturado pelo express.raw() — aceita qualquer Content-Type (inclui application/json com XML dentro)
-      let raw = req.body.toString('utf-8').replace(/^﻿/, '').trim();
+      let raw = normalizarCharset(req.body).trim();
       // Se a Ponte envolver o XML numa string JSON ("...xml..."), desembrulhar
       if (raw.startsWith('"')) {
         try { raw = JSON.parse(raw) as string; } catch { /* usar como está */ }
@@ -86,7 +87,7 @@ export class IngestController {
 
     this.logger.log(JSON.stringify({ msg: 'Ingestão XML recebida via PONTE', tamanho: xml.length }));
 
-    const comunicado = await this.comunicados.createFromXml(xml, SYSTEM_USER_ID);
+    const comunicado = await this.comunicados.importarXml(xml, SYSTEM_USER_ID);
 
     await this.audit.log({
       userId: SYSTEM_USER_ID,

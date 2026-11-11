@@ -1,0 +1,407 @@
+{
+  "id": null,
+  "uid": "sismos-mapa",
+  "title": "IPMA Sismos — Mapa Sismológico",
+  "description": "Localização geográfica dos sismos com comunicados emitidos",
+  "tags": ["sismos", "ipma", "mapa", "sismologia"],
+  "timezone": "Europe/Lisbon",
+  "refresh": "5m",
+  "time": { "from": "now-1y", "to": "now" },
+  "schemaVersion": 38,
+  "templating": {
+    "list": [
+      {
+        "name": "estado",
+        "label": "Estado",
+        "type": "custom",
+        "current": { "text": "Todos", "value": "ALL" },
+        "options": [
+          { "text": "Todos", "value": "ALL", "selected": true },
+          { "text": "ENVIADO", "value": "ENVIADO" },
+          { "text": "APROVADO", "value": "APROVADO" },
+          { "text": "RASCUNHO", "value": "RASCUNHO" },
+          { "text": "PENDENTE", "value": "PENDENTE" },
+          { "text": "CANCELADO", "value": "CANCELADO" }
+        ],
+        "query": "ALL,ENVIADO,APROVADO,RASCUNHO,PENDENTE,CANCELADO",
+        "includeAll": false,
+        "allValue": "",
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Sismos com comunicado",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "blue" }] },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT COUNT(*) as value FROM \"Comunicado\" WHERE lat IS NOT NULL AND lon IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Magnitude máxima",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 4.0, "color": "yellow" },
+              { "value": 5.0, "color": "orange" },
+              { "value": 6.0, "color": "red" }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT MAX(magnitude::float) as value FROM \"Comunicado\" WHERE magnitude IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Magnitude média",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "color": { "mode": "fixed", "fixedColor": "purple" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT ROUND(AVG(magnitude)::numeric, 1)::float as value FROM \"Comunicado\" WHERE magnitude IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Profundidade média (km)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "semi-dark-orange" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT ROUND(AVG(depth)::numeric, 0)::float as value FROM \"Comunicado\" WHERE depth IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Magnitude ≥ 4.0",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "orange" }, { "value": 5, "color": "red" }]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT COUNT(*) as value FROM \"Comunicado\" WHERE magnitude >= 4.0 AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Magnitude ≥ 5.0",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "red" }]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT COUNT(*) as value FROM \"Comunicado\" WHERE magnitude >= 5.0 AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo()",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 10,
+      "type": "geomap",
+      "title": "Mapa de sismos com comunicados",
+      "gridPos": { "h": 18, "w": 16, "x": 0, "y": 4 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "view": {
+          "id": "coords",
+          "lat": 39.5,
+          "lon": -27.0,
+          "zoom": 5
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showZoom": true,
+          "showAttribution": true
+        },
+        "basemap": {
+          "type": "osm-standard",
+          "config": {}
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Sismos",
+            "config": {
+              "style": {
+                "size": {
+                  "fixed": 5,
+                  "min": 3,
+                  "max": 25,
+                  "field": "magnitude"
+                },
+                "color": {
+                  "fixed": "dark-red",
+                  "field": "magnitude"
+                },
+                "opacity": 0.75,
+                "symbol": {
+                  "fixed": "img/icons/marker/circle.svg",
+                  "mode": "fixed"
+                },
+                "rotation": { "fixed": 0, "mode": "fixed" }
+              },
+              "showLegend": true
+            },
+            "tooltip": true,
+            "filterData": { "id": "byRefId", "options": "A" }
+          }
+        ],
+        "tooltip": { "mode": "details" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 3.0, "color": "yellow" },
+              { "value": 4.0, "color": "orange" },
+              { "value": 5.0, "color": "red" },
+              { "value": 6.0, "color": "dark-red" }
+            ]
+          },
+          "custom": {
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "latitude" },
+            "properties": [{ "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "longitude" },
+            "properties": [{ "id": "custom.hideFrom", "value": { "legend": true, "tooltip": false, "viz": false } }]
+          }
+        ]
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "refId": "A",
+        "rawSql": "SELECT lat::float AS latitude, lon::float AS longitude, magnitude::float AS magnitude, depth::float AS profundidade, COALESCE(\"regiaoIntmax\", 'Desconhecida') AS regiao, \"eventDateTime\" AS data_evento, titulo, estado::text AS estado FROM \"Comunicado\" WHERE lat IS NOT NULL AND lon IS NOT NULL AND magnitude IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo() ORDER BY \"eventDateTime\" DESC NULLS LAST",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 11,
+      "type": "piechart",
+      "title": "Sismos por intervalo de magnitude",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "table", "placement": "bottom", "values": ["value", "percent"] },
+        "tooltip": { "mode": "single" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT CASE WHEN magnitude < 2.0 THEN '< 2.0' WHEN magnitude < 3.0 THEN '2.0 – 2.9' WHEN magnitude < 4.0 THEN '3.0 – 3.9' WHEN magnitude < 5.0 THEN '4.0 – 4.9' WHEN magnitude < 6.0 THEN '5.0 – 5.9' ELSE '>= 6.0' END AS classe, COUNT(*) AS total FROM \"Comunicado\" WHERE magnitude IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo() GROUP BY classe ORDER BY MIN(magnitude)",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 12,
+      "type": "barchart",
+      "title": "Top regiões com mais sismos",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "orientation": "horizontal",
+        "legend": { "displayMode": "hidden" },
+        "tooltip": { "mode": "single" },
+        "xField": "regiao",
+        "barWidth": 0.7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "fixed", "fixedColor": "semi-dark-blue" },
+          "custom": { "fillOpacity": 80 }
+        }
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT COALESCE(\"regiaoIntmax\", 'Desconhecida') AS regiao, COUNT(*) AS total FROM \"Comunicado\" WHERE lat IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo() GROUP BY regiao ORDER BY total DESC LIMIT 10",
+        "format": "table"
+      }]
+    },
+
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Sismos recentes com comunicados",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "uid": "sismos-postgres" },
+      "options": {
+        "sortBy": [{ "displayName": "Data do evento", "desc": true }],
+        "footer": { "show": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "align": "auto", "minWidth": 80 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "magnitude" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 1 },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "value": null, "color": "green" },
+                    { "value": 3.0, "color": "yellow" },
+                    { "value": 4.0, "color": "orange" },
+                    { "value": 5.0, "color": "red" }
+                  ]
+                }
+              },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Data do evento" },
+            "properties": [{ "id": "unit", "value": "time:DD/MM/YYYY HH:mm" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Estado" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": {
+                    "ENVIADO":  { "text": "Enviado",  "color": "green" },
+                    "APROVADO": { "text": "Aprovado", "color": "blue"  },
+                    "RASCUNHO": { "text": "Rascunho", "color": "grey"  }
+                  }}
+                ]
+              },
+              { "id": "custom.displayMode", "value": "color-text" }
+            ]
+          }
+        ]
+      },
+      "targets": [{
+        "datasource": { "uid": "sismos-postgres" },
+        "rawSql": "SELECT \"eventDateTime\" AS \"Data do evento\", titulo AS \"Titulo\", magnitude::float AS magnitude, depth::float AS \"Prof. (km)\", COALESCE(\"regiaoIntmax\", '-') AS \"Regiao\", COALESCE(intmax, '-') AS \"Int. max.\", lat::float AS \"Lat\", lon::float AS \"Lon\", estado::text AS \"Estado\" FROM \"Comunicado\" WHERE lat IS NOT NULL AND ('$estado' = 'ALL' OR estado::text = '$estado') AND \"criadoEm\" >= $__timeFrom() AND \"criadoEm\" <= $__timeTo() ORDER BY \"eventDateTime\" DESC NULLS LAST LIMIT 50",
+        "format": "table"
+      }]
+    }
+
+  ]
+}

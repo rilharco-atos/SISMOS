@@ -12,7 +12,7 @@ import { CreateDestinatarioDto, UpdateDestinatarioDto } from './dto/destinatario
 * @param        tipo — 'email' or 'telefone' to select the masking strategy
 * @return       Masked string, or empty string when valor is absent
 *********************************************************************************************************************/
-function mascarar(valor: string | null | undefined, tipo: 'email' | 'telefone'): string {
+export function mascarar(valor: string | null | undefined, tipo: 'email' | 'telefone'): string {
   if (!valor) return '';
   if (tipo === 'email') {
     const [local, dominio] = valor.split('@');

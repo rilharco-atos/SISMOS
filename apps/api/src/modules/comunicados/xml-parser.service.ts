@@ -78,9 +78,12 @@ export class XmlParserService {
     if (Buffer.byteLength(xml, 'utf-8') > MAX_XML_BYTES) throw new BadRequestException('Ficheiro XML demasiado grande');
     if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new BadRequestException('XML com DOCTYPE/ENTITY não é aceite');
 
+    // Escapar & soltos em URLs e texto livre antes de analisar (e.g. &query= em klmLinks)
+    const xmlSanitizado = xml.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|amp|lt|gt|apos|quot|[a-zA-Z]\w*);)/g, '&amp;');
+
     let parsed: any;
     try {
-      parsed = this.parser.parse(xml);
+      parsed = this.parser.parse(xmlSanitizado);
     } catch {
       throw new BadRequestException('Ficheiro XML inválido');
     }

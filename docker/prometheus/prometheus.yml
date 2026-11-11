@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: 'ipma-sismos'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # host.docker.internal alcança a API tanto no modo --docker (publicada em 3011)
+  # como no modo dev (corre directamente na porta 3011 do host ou no porto que o
+  # docker compose expõe). Se usares --docker, a API fica em localhost:3011.
+  # Se correres a API directamente (npm start:dev), fica em localhost:3002 —
+  # nesse caso alterar o target abaixo para host.docker.internal:3002.
+  - job_name: 'sismos-api'
+    metrics_path: '/api/metrics'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:3011']
+    # Descomentar se METRICS_TOKEN estiver definido no .env:
+    # bearer_token_file: /etc/prometheus/secrets/metrics-token
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

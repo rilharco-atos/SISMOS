@@ -26,7 +26,8 @@ const NAV: { group: string; adminOnly?: boolean; items: { label: string; href: s
     { label: 'Novo Comunicado', href: '/comunicados/novo', icon: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></> },
   ]},
   { group: 'Sistema', adminOnly: true, items: [
-    { label: 'Backoffice', href: '/backoffice', icon: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></> },
+    { label: 'Observabilidade', href: '/observabilidade', icon: <><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></> },
+    { label: 'Definições', href: '/backoffice', icon: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></> },
   ]},
 ];
 
@@ -43,7 +44,8 @@ function crumbFor(pathname: string): string {
   if (pathname.endsWith('/editar')) return 'Editar Comunicado';
   if (pathname.startsWith('/comunicados/')) return 'Detalhe do Comunicado';
   if (pathname.startsWith('/comunicados')) return 'Comunicados';
-  if (pathname.startsWith('/backoffice')) return 'Backoffice';
+  if (pathname.startsWith('/observabilidade')) return 'Observabilidade';
+  if (pathname.startsWith('/backoffice')) return 'Definições';
   return '';
 }
 
@@ -160,7 +162,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
-    if (user && !isAdmin && pathname.startsWith('/backoffice')) router.replace('/');
+    if (user && !isAdmin && (pathname.startsWith('/backoffice') || pathname.startsWith('/observabilidade'))) router.replace('/');
   }, [user, isAdmin, pathname, router]);
 
   useEffect(() => {
@@ -340,7 +342,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             )}
             {saude?.ambiente !== 'test' && saude?.modoEnvio === 'test' && (
               <div className="env-banner env-banner--suave" role="status">
-                <strong>Modo de envio: teste</strong> — só os contactos marcados como internos recebem. Altere em Backoffice › Configurações.
+                <strong>Modo de envio: teste</strong> — só os contactos marcados como internos recebem. Altere em Definições › Gateway SMS.
               </div>
             )}
             {children}

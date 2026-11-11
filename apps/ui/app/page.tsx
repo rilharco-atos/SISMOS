@@ -120,7 +120,11 @@ export default function DashboardPage() {
     setLoading(false);
   }, [router]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [load]);
 
   const mesAtualCurto = MESES[new Date().getUTCMonth()];
   const mesAnteriorCurto = MESES[(new Date().getUTCMonth() + 11) % 12];
@@ -151,7 +155,7 @@ export default function DashboardPage() {
           {saude.status === 'down'
             ? 'base de dados indisponível.'
             : `problemas em ${Object.entries(saude.componentes ?? {}).filter(([, e]) => e === 'erro' || e === 'degradado').map(([k]) => COMPONENTES[k] ?? k).join(', ')}.`}
-          {' '}Os detalhes estão em Backoffice › Configurações.
+          {' '}Os detalhes estão em Definições › Saúde do Sistema.
         </div>
       )}
 
@@ -204,7 +208,7 @@ export default function DashboardPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Referência</th><th>Data Edição</th><th>Pág. Inicial</th><th>Estado</th>
+              <th>Referência</th><th>Data Sismo</th><th>Pág. Inicial</th><th>Estado</th>
               <th>Título / Localização</th><th>Início</th><th>Fim</th><th>Versão</th><th>Email</th><th>SMS</th><th></th>
             </tr>
           </thead>
@@ -220,10 +224,14 @@ export default function DashboardPage() {
               const ultima = versoes[versoes.length - 1];
               const emails = ultima?.emailEnvios ?? [];
               const sms = ultima?.smsEnvios ?? [];
-              const d = dataUtc(item.atualizadoEm);
+              const dSismo = dataUtc(item.eventDateTime);
+              const dEdit  = dataUtc(item.atualizadoEm);
               const detalhe = [
                 item.magnitude != null ? `Mag ${Number(item.magnitude).toFixed(1)} ML` : null,
-                item.intmax ? `Int. ${item.intmax}` : null,
+                item.depth != null ? `Prof. ${Number(item.depth).toFixed(0)} km` : null,
+                item.intmax
+                  ? `Int. ${item.intmax}${item.regiaoIntmax ? ` – ${item.regiaoIntmax}` : ''}`
+                  : null,
                 item.local,
               ].filter(Boolean).join(' · ');
               return (
@@ -232,9 +240,16 @@ export default function DashboardPage() {
                     <span className="cell-primary">{item.referencia}</span>
                     <span className="cell-meta">Template {item.templateId} · {item.areaName}</span>
                   </td>
-                  <td><span style={{ whiteSpace: 'nowrap' }}>{d.dia}</span><span className="cell-sub">{d.hora}</span></td>
+                  <td>
+                    <span style={{ whiteSpace: 'nowrap' }}>{dSismo.dia !== '—' ? dSismo.dia : '—'}</span>
+                    {dSismo.hora && <span className="cell-sub">{dSismo.hora}</span>}
+                    <span className="cell-sub" style={{ color: 'var(--text-muted)', fontSize: 10 }}>editado {dEdit.dia}</span>
+                  </td>
                   <td><span className={item.primeiraPagina ? 'badge badge-success' : 'badge'}>{item.primeiraPagina ? 'Sim' : 'Não'}</span></td>
-                  <td><span className={ESTADO_BADGE[item.estado] ?? 'badge'}>{ESTADO_LABELS[item.estado] ?? item.estado}</span></td>
+                  <td>
+                    <span className={ESTADO_BADGE[item.estado] ?? 'badge'}>{ESTADO_LABELS[item.estado] ?? item.estado}</span>
+                    {item.ativo === false && <span className="badge badge-danger" style={{ marginLeft: 4 }}>Revogado</span>}
+                  </td>
                   <td>
                     <span className="cell-primary" title={item.titulo}>{item.titulo}</span>
                     <span className="cell-sub">{detalhe || '—'}</span>

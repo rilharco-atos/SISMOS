@@ -1,0 +1,271 @@
+{
+  "id": null,
+  "uid": "sismos-operacional",
+  "title": "IPMA Sismos — Operacional",
+  "description": "Estado operacional da plataforma de comunicados sismológicos",
+  "tags": ["sismos", "ipma", "operacional"],
+  "timezone": "Europe/Lisbon",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "schemaVersion": 38,
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "API — Estado",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "INDISPONÍVEL", "color": "red" }, "1": { "text": "DISPONÍVEL", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }] },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "up{job=\"sismos-api\"}", "legendFormat": "API", "instant": true }]
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Uptime",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }] },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "time() - sismos_process_start_time_seconds", "legendFormat": "Uptime", "instant": true }]
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Último polling FTP",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "displayName": "Há",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 300, "color": "yellow" },
+              { "value": 600, "color": "red" }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "time() - sismos_ftp_ultimo_poll_sucesso_timestamp_seconds", "legendFormat": "Tempo desde último sucesso FTP", "instant": true }]
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Comunicados criados (24h)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "blue" }] },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_comunicados_criados_total[24h])", "legendFormat": "24h", "instant": true }]
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Envios OK (1h)",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }] },
+          "color": { "mode": "fixed", "fixedColor": "green" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_envios_total{resultado=\"ok\"}[1h])", "legendFormat": "OK 1h", "instant": true }]
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Falhas de envio (1h)",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "orange" }, { "value": 5, "color": "red" }]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [{ "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_envios_total{resultado=\"falha\"}[1h])", "legendFormat": "Falhas 1h", "instant": true }]
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Pedidos HTTP — taxa por segundo",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "sum(rate(sismos_http_requests_total{status=~\"2..\"}[5m]))", "legendFormat": "2xx" },
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "sum(rate(sismos_http_requests_total{status=~\"4..\"}[5m]))", "legendFormat": "4xx" },
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "sum(rate(sismos_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx" }
+      ]
+    },
+
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Latência HTTP — p50 / p95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "uid": "sismos-prometheus" },
+          "expr": "rate(sismos_http_request_duration_seconds_sum[5m]) / rate(sismos_http_request_duration_seconds_count[5m])",
+          "legendFormat": "Média"
+        }
+      ]
+    },
+
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Comunicados criados",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "bars" }
+        }
+      },
+      "targets": [
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_comunicados_criados_total[1h])", "legendFormat": "{{origem}}" }
+      ]
+    },
+
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Envios por canal",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "rate(sismos_envios_total{resultado=\"ok\"}[5m])", "legendFormat": "{{canal}} OK" },
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "rate(sismos_envios_total{resultado=\"falha\"}[5m])", "legendFormat": "{{canal}} FALHA" }
+      ]
+    },
+
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "FTP — erros de polling",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 20, "drawStyle": "bars" },
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        }
+      },
+      "targets": [
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_ftp_poll_erros_total[5m])", "legendFormat": "Erros FTP" }
+      ]
+    },
+
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "XML processados (FTP)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "uid": "sismos-prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "bottom" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "bars" }
+        }
+      },
+      "targets": [
+        { "datasource": { "uid": "sismos-prometheus" }, "expr": "increase(sismos_xml_processados_total[1h])", "legendFormat": "{{resultado}}" }
+      ]
+    }
+
+  ]
+}

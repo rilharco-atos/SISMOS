@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import * as ftp from 'basic-ftp';
+import SftpClient = require('ssh2-sftp-client');
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,6 +11,8 @@ import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { MetricsService } from '../observability/metrics.service';
 import { WebsiteService } from '../website/website.service';
+import { mascarar } from '../listas/listas.service';
+import { Mascara, TABELAS_DADOS, TabelaDados, construirSelect, valorPorCaminho } from './dados.registry';
 import { UpdateConfigDto } from './dto/update-config.dto';
 import { avaliarBackup, avaliarEnvio, avaliarFtp, avaliarWebsite, estadoGlobal } from './saude';
 
@@ -184,13 +187,29 @@ export class SystemService {
     const cfg = await this.settings.ftp();
     if (!cfg.host) return { ok: false, origem: cfg.origem, mensagem: 'Servidor FTP não configurado' };
     const inicio = Date.now();
+    const protocolo = cfg.sftp ? 'SFTP' : 'FTP';
+
+    if (cfg.sftp) {
+      const sftp = new SftpClient();
+      try {
+        await sftp.connect({ host: cfg.host, port: cfg.port, username: cfg.user, password: cfg.password });
+        const list = await sftp.list(cfg.incomingDir);
+        const xmls = list.filter(f => f.name.endsWith('.xml') && f.type === '-').length;
+        return this.resultadoTeste(userId, protocolo, true, cfg.origem, `Ligação a ${cfg.host}:${cfg.port} aceite · ${xmls} ficheiro(s) XML em ${cfg.incomingDir}`, inicio);
+      } catch (e: any) {
+        return this.resultadoTeste(userId, protocolo, false, cfg.origem, e.message, inicio);
+      } finally {
+        await sftp.end().catch(() => undefined);
+      }
+    }
+
     const client = new ftp.Client(10000);
     try {
       await client.access({ host: cfg.host, user: cfg.user, password: cfg.password, secure: false });
       const xmls = (await client.list(cfg.incomingDir)).filter(f => f.name.endsWith('.xml') && f.type === ftp.FileType.File).length;
-      return this.resultadoTeste(userId, 'FTP', true, cfg.origem, `Ligação a ${cfg.host} aceite · ${xmls} ficheiro(s) XML em ${cfg.incomingDir}`, inicio);
+      return this.resultadoTeste(userId, protocolo, true, cfg.origem, `Ligação a ${cfg.host} aceite · ${xmls} ficheiro(s) XML em ${cfg.incomingDir}`, inicio);
     } catch (e: any) {
-      return this.resultadoTeste(userId, 'FTP', false, cfg.origem, e.message, inicio);
+      return this.resultadoTeste(userId, protocolo, false, cfg.origem, e.message, inicio);
     } finally {
       client.close();
     }
@@ -255,6 +274,61 @@ export class SystemService {
   *********************************************************************************************************************/
   async getAuditLog(limit = 100) {
     return this.audit.findAll(Math.min(Math.max(limit, 1), 1000));
+  }
+
+  /*********************************************************************************************************************
+  * @method       listarTabelasDados
+  * @description  Lists the whitelisted tables of the backoffice "Dados" tab with their row counts.
+  * @return       Promise resolving to an array of { key, label, total }
+  *********************************************************************************************************************/
+  async listarTabelasDados() {
+    return Promise.all(TABELAS_DADOS.map(async t => ({
+      key: t.key,
+      label: t.label,
+      total: await (this.prisma as any)[t.delegate].count(),
+    })));
+  }
+
+  /*********************************************************************************************************************
+  * @method       getDadosTabela
+  * @description  Returns one page of a whitelisted table, read-only. Only the columns declared in the registry
+  *               are selected, rows are flattened by dotted column key, and personal contacts are masked.
+  *               Optional text search runs case-insensitively over the table's searchable fields.
+  * @param        tabela — registry key of the table
+  * @param        page — 1-based page number (clamped to the last page)
+  * @param        pageSize — rows per page, between 1 and 100 (default 50)
+  * @param        q — optional search text
+  * @return       Promise resolving to { tabela, label, colunas, items, total, page, pageSize, totalPages }
+  *********************************************************************************************************************/
+  async getDadosTabela(tabela: string, page = 1, pageSize = 50, q?: string) {
+    const t: TabelaDados | undefined = TABELAS_DADOS.find(x => x.key === tabela);
+    if (!t) throw new NotFoundException('Tabela desconhecida');
+    const delegate = (this.prisma as any)[t.delegate];
+    const size = Math.min(Math.max(Number.isFinite(pageSize) ? pageSize : 50, 1), 100);
+    const termo = q?.trim().slice(0, 100);
+    const where = termo && t.pesquisa.length
+      ? { OR: t.pesquisa.map(campo => ({ [campo]: { contains: termo, mode: 'insensitive' } })) }
+      : undefined;
+    const total: number = await delegate.count({ where });
+    const totalPages = Math.max(Math.ceil(total / size), 1);
+    const current = Math.min(Math.max(Number.isFinite(page) ? page : 1, 1), totalPages);
+    const rows: any[] = await delegate.findMany({
+      where,
+      orderBy: t.orderBy,
+      skip: (current - 1) * size,
+      take: size,
+      select: construirSelect(t.colunas),
+    });
+    const items = rows.map(row => Object.fromEntries(t.colunas.map(col => {
+      const v = valorPorCaminho(row, col.key);
+      return [col.key, col.mascara ? mascarar(v, col.mascara === Mascara.EMAIL ? 'email' : 'telefone') || null : v];
+    })));
+    return {
+      tabela: t.key,
+      label: t.label,
+      colunas: t.colunas.map(({ key, label, tipo }) => ({ key, label, tipo })),
+      items, total, page: current, pageSize: size, totalPages,
+    };
   }
 
   /*********************************************************************************************************************

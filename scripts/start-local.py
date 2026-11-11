@@ -11,17 +11,21 @@ Arranca tudo o que é preciso para ter a plataforma em http://localhost:3000:
   5. UI Next.js no porto 3000
 
 Uso:
-    py scripts/start-local.py                          # arranque normal (só postgres via Docker)
+    py scripts/start-local.py                          # arranque normal (postgres + api + ui)
     py scripts/start-local.py --no-browser             # sem abrir browser
     py scripts/start-local.py --infra-only             # só o container postgres
     py scripts/start-local.py --reset-db               # apaga volumes e recomeça
     py scripts/start-local.py --skip-install           # salta o npm install
+    py scripts/start-local.py --monitoring             # inclui Prometheus + Alertmanager + Grafana
     py scripts/start-local.py --docker                 # tudo via Docker (postgres + api + ui)
+    py scripts/start-local.py --docker --monitoring    # tudo via Docker + monitorização
     py scripts/start-local.py --docker --profile backup  # inclui backups automáticos
     py scripts/start-local.py --stop                   # pára os containers
 
-Profiles Docker disponíveis (usar com --docker):
-    backup   — pg_dump de 6 em 6 horas (não necessário em dev)
+Acesso à monitorização (quando activa):
+    Grafana:      http://localhost:3001            (admin / GRAFANA_ADMIN_PASSWORD do .env)
+    Prometheus:   http://localhost:<PROMETHEUS_PORT>    (default 9090; configurável no .env)
+    Alertmanager: http://localhost:<ALERTMANAGER_PORT>  (default 9093; configurável no .env)
 """
 
 from __future__ import annotations
@@ -55,8 +59,18 @@ _CMD_EXT            = ".cmd" if IS_WINDOWS else ""
 API_PORT = 3002   # relido após ensure_env() em main()
 UI_PORT  = 3000
 
+MONITORING_SERVICES = ["prometheus", "alertmanager", "grafana"]
+# Portos efectivos lidos do .env em runtime (PROMETHEUS_PORT / ALERTMANAGER_PORT).
+# Os valores abaixo são os defaults usados quando as variáveis não estão definidas.
+MONITORING_PORTS = {
+    "prometheus":   [9090],
+    "alertmanager": [9093],
+    "grafana":      [3001],
+}
+
 COMPOSE_ENV = {
-    "POSTGRES_PASSWORD": "sismos_dev_pwd",
+    "POSTGRES_PASSWORD":    "sismos_dev_pwd",
+    "GRAFANA_ADMIN_PASSWORD": "admin",
 }
 
 # ---------------------------------------------------------------------------
@@ -126,8 +140,30 @@ def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
 
 
+def _parse_dotenv(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    try:
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            result[key] = val
+    except OSError:
+        pass
+    return result
+
+
 def compose_env() -> dict:
-    return {**os.environ, **COMPOSE_ENV}
+    """Devolve o ambiente para docker compose: sistema + defaults + .env do projecto."""
+    env = {**os.environ, **COMPOSE_ENV}
+    dot_env = PROJECT_ROOT / ".env"
+    if dot_env.exists():
+        for k, v in _parse_dotenv(dot_env).items():
+            env[k] = v
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +174,8 @@ def docker_alive() -> bool:
     if not shutil.which("docker"):
         return False
     try:
-        return run(["docker", "info", "--format", "{{.ServerVersion}}"]).returncode == 0
+        res = run(["docker", "info", "--format", "{{.ServerVersion}}"])
+        return res.returncode == 0 and bool(res.stdout.strip())
     except (FileNotFoundError, OSError):
         return False
 
@@ -204,8 +241,46 @@ def start_postgres(reset_db: bool) -> None:
     fail("timeout à espera do PostgreSQL.", "docker compose logs postgres")
 
 
+def start_monitoring() -> None:
+    """Arranca os containers de monitorização: Prometheus, Alertmanager, Grafana."""
+    env = compose_env()
+
+    # Verificar se a password do Grafana está definida
+    grafana_pwd = env.get("GRAFANA_ADMIN_PASSWORD", "")
+    if not grafana_pwd or grafana_pwd == "alterar_em_producao":
+        cprint("yellow", f"  {SYM_WARN} GRAFANA_ADMIN_PASSWORD não definida — a usar 'admin' por omissão")
+
+    res = subprocess.run(
+        ["docker", "compose", "--profile", "monitoring", "up", "-d"] + MONITORING_SERVICES,
+        cwd=PROJECT_ROOT, env=env,
+    )
+    if res.returncode != 0:
+        fail("`docker compose up` da monitorização falhou (ver output acima).")
+
+    pending = list(MONITORING_SERVICES)
+    for i in range(40):
+        for svc in list(pending):
+            state = container_state(svc)
+            if state in ("healthy", "running"):
+                cprint("green", f"  {SYM_OK} {svc} pronto")
+                pending.remove(svc)
+            elif state in ("exited", "unhealthy"):
+                fail(f"o serviço {svc} ficou em estado '{state}'.",
+                     f"docker compose logs {svc}")
+        if not pending:
+            return
+        time.sleep(3)
+        if (i + 1) % 5 == 0:
+            print(f"  Aguardar monitorização... ({', '.join(pending)})")
+
+    fail(f"timeout à espera de: {', '.join(pending)}", "docker compose logs")
+
+
 def stop_containers() -> None:
-    subprocess.run(["docker", "compose", "stop"], cwd=PROJECT_ROOT, env=compose_env())
+    subprocess.run(
+        ["docker", "compose", "--profile", "monitoring", "--profile", "backup", "stop"],
+        cwd=PROJECT_ROOT, env=compose_env(),
+    )
     cprint("green", f"  {SYM_OK} Containers parados (volumes preservados)")
 
 
@@ -238,22 +313,6 @@ def install_npm(name: str, directory: Path) -> None:
 # 3. .env
 # ---------------------------------------------------------------------------
 
-def _parse_dotenv(path: Path) -> dict[str, str]:
-    result: dict[str, str] = {}
-    try:
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            key = key.strip()
-            val = val.strip().strip('"').strip("'")
-            result[key] = val
-    except OSError:
-        pass
-    return result
-
-
 def ensure_env() -> None:
     env_path     = PROJECT_ROOT / ".env"
     example_path = PROJECT_ROOT / ".env.example"
@@ -266,7 +325,6 @@ def ensure_env() -> None:
     else:
         cprint("green", f"  {SYM_OK} .env encontrado")
 
-    # carrega as variáveis do .env — sobrepõe o sistema para garantir consistência
     for k, v in _parse_dotenv(env_path).items():
         os.environ[k] = v
 
@@ -277,7 +335,6 @@ def ensure_env() -> None:
 
 def setup_prisma(reset_db: bool) -> None:
     npx = "npx" + _CMD_EXT
-    # env explícito: .env sobrepõe o sistema, evita DATABASE_URL antiga na sessão
     env = {**os.environ, **_parse_dotenv(PROJECT_ROOT / ".env")}
     db_url = env.get("DATABASE_URL", "<não definido>")
     cprint("gray", f"  DATABASE_URL: {db_url}")
@@ -321,7 +378,7 @@ def stream(proc: subprocess.Popen, prefix: str, colour: str) -> None:
 # 6. Aguardar a API estar pronta
 # ---------------------------------------------------------------------------
 
-def announce_when_ready(open_browser: bool) -> None:
+def announce_when_ready(open_browser: bool, with_monitoring: bool) -> None:
     health_url = f"http://localhost:{API_PORT}/api/system/health"
     for _ in range(84):          # ~7 min
         time.sleep(5)
@@ -335,17 +392,31 @@ def announce_when_ready(open_browser: bool) -> None:
         cprint("yellow", f"\n  {SYM_WARN} A API não ficou pronta em 7 min — ver output acima.")
         return
 
-    print()
-    box("IPMA Sismos - Plataforma pronta", [
+    links = [
         f"UI        ->  http://localhost:{UI_PORT}",
         f"API       ->  http://localhost:{API_PORT}/api",
         f"Swagger   ->  http://localhost:{API_PORT}/api/docs",
+    ]
+    if with_monitoring:
+        grafana_port = os.environ.get("GRAFANA_PORT",       "3001")
+        prom_port    = os.environ.get("PROMETHEUS_PORT",   "9090")
+        alert_port   = os.environ.get("ALERTMANAGER_PORT", "9093")
+        links += [
+            "",
+            f"Grafana   ->  http://localhost:{grafana_port}  (admin / GRAFANA_ADMIN_PASSWORD)",
+            f"Prometh.  ->  http://localhost:{prom_port}",
+            f"Alertmgr  ->  http://localhost:{alert_port}",
+        ]
+    links += [
         "",
         "Login:  rui.ilharco.external@atos.ai",
         "Pass:   secret123",
         "",
         "Ctrl+C para parar tudo.",
-    ])
+    ]
+
+    print()
+    box("IPMA Sismos - Plataforma pronta", links)
     print()
 
     if open_browser:
@@ -359,7 +430,7 @@ def announce_when_ready(open_browser: bool) -> None:
 # 7. Arrancar API + UI
 # ---------------------------------------------------------------------------
 
-def start_dev(open_browser: bool) -> None:
+def start_dev(open_browser: bool, with_monitoring: bool) -> None:
     for name, port in [("API", API_PORT), ("UI", UI_PORT)]:
         if port_in_use("127.0.0.1", port):
             fail(f"a porta {port} ({name}) já está ocupada.",
@@ -379,7 +450,7 @@ def start_dev(open_browser: bool) -> None:
 
     threading.Thread(target=stream, args=(api_proc, "API", "blue"),  daemon=True).start()
     threading.Thread(target=stream, args=(ui_proc,  "UI",  "green"), daemon=True).start()
-    threading.Thread(target=announce_when_ready, args=(open_browser,), daemon=True).start()
+    threading.Thread(target=announce_when_ready, args=(open_browser, with_monitoring), daemon=True).start()
 
     try:
         api_proc.wait()
@@ -431,6 +502,8 @@ def main() -> int:
     parser.add_argument("--reset-db",      action="store_true", help="Apagar volumes antes de arrancar")
     parser.add_argument("--skip-install",  action="store_true", help="Saltar npm install")
     parser.add_argument("--skip-db",       action="store_true", help="Saltar prisma push e seed")
+    parser.add_argument("--monitoring",    action="store_true",
+                        help="Incluir Prometheus + Alertmanager + Grafana")
     parser.add_argument("--docker",        action="store_true", help="Tudo via Docker Compose (produção local)")
     parser.add_argument("--profile",       action="append",     metavar="PROFILE", default=[],
                         help="Activar profile Docker extra (ex: --profile backup). Repetível.")
@@ -449,37 +522,63 @@ def main() -> int:
 
     # ── modo Docker Compose completo ──────────────────────────────────────
     if args.docker:
+        profiles = list(args.profile)
+        if args.monitoring and "monitoring" not in profiles:
+            profiles.append("monitoring")
         print("\n[1/2] Docker...")
         ensure_docker()
         print("\n[2/2] A arrancar stack completo...")
-        start_docker_compose(profiles=args.profile)
+        start_docker_compose(profiles=profiles)
         return 0
 
     # ── modo dev (processos directos) ─────────────────────────────────────
-    print("\n[1/5] Verificacoes...")
+    total_steps = 5 + (1 if args.monitoring else 0)
+    step = 0
+
+    def next_step(label: str) -> None:
+        nonlocal step
+        step += 1
+        print(f"\n[{step}/{total_steps}] {label}...")
+
+    next_step("Verificacoes")
     ensure_env()
-    # reler as portas do .env (pode sobrepor os defaults acima)
     global API_PORT, UI_PORT
     API_PORT = int(os.environ.get("PORT", API_PORT))
     UI_PORT  = int(os.environ.get("UI_PORT", UI_PORT))
     ensure_node()
     ensure_docker()
 
-    print("\n[2/5] PostgreSQL...")
+    next_step("PostgreSQL")
     start_postgres(reset_db=args.reset_db)
 
+    if args.monitoring:
+        next_step("Monitorizacao (Prometheus + Alertmanager + Grafana)")
+        # Em modo dev, a API corre no host (porta API_PORT). O Prometheus aponta
+        # para host.docker.internal:3011 — a porta publicada pelo container da API
+        # no docker-compose. Se a API correr só via npm (modo dev), editar
+        # docker/prometheus/prometheus.yml e trocar o target para
+        # host.docker.internal:<API_PORT>.
+        if API_PORT != 3011:
+            cprint("yellow", f"  {SYM_WARN} API em modo dev (porta {API_PORT}). O Prometheus scrape")
+            cprint("yellow", f"    aponta para host.docker.internal:3011 (porta Docker).")
+            cprint("yellow", f"    Se quiser scraping em modo dev, editar docker/prometheus/prometheus.yml")
+            cprint("yellow", f"    e substituir o target por host.docker.internal:{API_PORT}.")
+        start_monitoring()
+
     if not args.skip_install:
-        print("\n[3/5] Dependencias npm...")
+        next_step("Dependencias npm")
         install_npm("API", API_DIR)
         install_npm("UI",  UI_DIR)
     else:
-        cprint("yellow", f"\n[3/5] {SYM_WARN} npm install saltado (--skip-install)")
+        step += 1
+        cprint("yellow", f"\n[{step}/{total_steps}] {SYM_WARN} npm install saltado (--skip-install)")
 
     if not args.skip_db:
-        print("\n[4/5] Base de dados (Prisma)...")
+        next_step("Base de dados (Prisma)")
         setup_prisma(reset_db=args.reset_db)
     else:
-        cprint("yellow", f"\n[4/5] {SYM_WARN} Prisma saltado (--skip-db)")
+        step += 1
+        cprint("yellow", f"\n[{step}/{total_steps}] {SYM_WARN} Prisma saltado (--skip-db)")
 
     if args.infra_only:
         print()
@@ -487,8 +586,8 @@ def main() -> int:
         print("    Backend:  py scripts/start-local.py --skip-install --skip-db")
         return 0
 
-    print("\n[5/5] API + UI...")
-    start_dev(open_browser=not args.no_browser)
+    next_step("API + UI")
+    start_dev(open_browser=not args.no_browser, with_monitoring=args.monitoring)
     return 0
 
 
