@@ -246,11 +246,11 @@ export default function DefinicoesPage() {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height: 'calc(100vh - 56px)' }}>
 
         {/* Sidebar — estreita em Dados mas permanece navegável via ícones */}
-        <nav style={{ borderRight: '1px solid var(--border)', overflowY: 'auto', padding: section === 'dados' ? '8px 0' : '12px 0', background: 'var(--bg-secondary)', minWidth: section === 'dados' ? 48 : 220, maxWidth: section === 'dados' ? 48 : 220, overflow: 'hidden', transition: 'min-width 0.2s, max-width 0.2s' }}>
+        <nav style={{ borderRight: '1px solid var(--border)', overflowY: 'auto', padding: '12px 0', background: 'var(--bg-secondary)', minWidth: 220, maxWidth: 220 }}>
           {SIDEBAR.map(({ group, items }) => (
             <div key={group}>
-              {section !== 'dados' && <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{group}</div>}
-              {items.map(({ key, label, icon }) => <SidebarItem key={key} k={key} label={label} icon={icon} collapsed={section === 'dados'} />)}
+              <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{group}</div>
+              {items.map(({ key, label, icon }) => <SidebarItem key={key} k={key} label={label} icon={icon} />)}
             </div>
           ))}
         </nav>
